@@ -38,7 +38,7 @@ echo "✓ receiver_root build successful"
 echo ""
 
 # Sender 빌드
-echo "[2/2] Building sender..."
+echo "[2/3] Building sender..."
 make -f Makefile.sender TARGET=cooja clean
 make -f Makefile.sender TARGET=cooja -j
 
@@ -47,6 +47,18 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 echo "✓ sender build successful"
+echo ""
+
+# Attacker 빌드
+echo "[3/3] Building attacker..."
+make -f Makefile.attacker TARGET=cooja clean
+make -f Makefile.attacker TARGET=cooja -j
+
+if [ $? -ne 0 ]; then
+    echo "Error: attacker build failed"
+    exit 1
+fi
+echo "✓ attacker build successful"
 echo ""
 
 cd "$PROJECT_DIR"

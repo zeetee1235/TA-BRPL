@@ -17,6 +17,11 @@ source scripts/setup_env.sh
 ./scripts/run_simulation.sh 600  # 10분 실행
 ```
 
+### 3-1. Phase 3 자동 비교 (정상 vs 공격)
+```bash
+./scripts/run_phase3.sh 600
+```
+
 **또는 GUI 모드로 실행** (디버깅용):
 ```bash
 ./scripts/run_cooja_gui.sh
@@ -28,6 +33,10 @@ source scripts/setup_env.sh
 python3 tools/parse_results.py logs/COOJA.testlog
 ```
 
+**자동 저장 위치**
+- `results/run-YYYYMMDD-HHMMSS/` (개별 실행)
+- `results/phase3-YYYYMMDD-HHMMSS/` (정상 vs 공격 비교)
+
 ---
 
 ## 현재 구현 상태
@@ -36,21 +45,21 @@ python3 tools/parse_results.py logs/COOJA.testlog
 - [x] BRPL Objective Function (brpl-of.c)
 - [x] RPL Root + UDP Receiver (receiver_root.c)
 - [x] Sensor Sender (sender.c)
-- [x] Cooja 시뮬레이션 설정 (configs/simulation.csc)
+- [x] Selective Forwarding 공격 노드 (attacker.c)
+- [x] Trust 계산 (EWMA)
+- [x] Trust 기반 Parent 선택
+- [x] Cooja 시뮬레이션 설정 (normal/attack)
 - [x] 빌드 스크립트
 - [x] 결과 분석 스크립트
 
 📋 **다음 단계**
-- [ ] Selective Forwarding 공격 노드 구현
-- [ ] Trust 계산 로직 (EWMA)
-- [ ] Trust 기반 Parent 선택
-- [ ] 성능 비교 실험
+- [ ] 결과 시각화 (matplotlib)
 
 ---
 
 ## 네트워크 구성
 
-- **노드 수**: 8개 (Root 1개 + Sensor 7개)
+- **노드 수**: 8개 (Root 1 + Attacker 1 + Sender 6)
 - **토폴로지**: Multi-hop with redundant paths
 - **전송 주기**: 30초
 - **Warmup 시간**: 120초
@@ -70,6 +79,10 @@ python3 tools/parse_results.py logs/COOJA.testlog
 - Radio range: 50m
 - Interference range: 100m
 - Success ratio: 1.0 (100%)
+
+### configs/simulation_normal.csc / simulation_attack.csc
+- Node 3: 공격 노드 (attack 시 drop=50%)
+- normal/attack 비교를 위한 별도 시뮬 파일
 
 ---
 

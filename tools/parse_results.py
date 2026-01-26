@@ -8,6 +8,7 @@ CSV 로그 파서: Cooja 로그에서 성능 지표 추출
 
 import sys
 import re
+import ipaddress
 from collections import defaultdict
 
 def parse_cooja_log(filename):
@@ -17,6 +18,8 @@ def parse_cooja_log(filename):
     tx_packets = defaultdict(list)  # {node_id: [seq1, seq2, ...]}
     rx_packets = defaultdict(list)  # {node_id: [seq1, seq2, ...]}
     delays = []  # [(seq, delay_ms), ...]
+    pending_tx_seqs = []  # seqs without node id
+    inferred_sender_id = None
     
     # 제어 패킷 카운터
     rpl_packets = 0
@@ -32,12 +35,16 @@ def parse_cooja_log(filename):
                     parts = line.split('CSV,RX,')[1].split(',')
                     if len(parts) >= 2:
                         seq = int(parts[1])
-                        # src_ip에서 노드 ID 추출 (간단히 마지막 옥텟 사용)
+                        # src_ip에서 노드 ID 추출 (IPv6 마지막 16비트)
                         src_ip = parts[0]
-                        node_match = re.search(r'::(\d+)', src_ip)
-                        if node_match:
-                            node_id = int(node_match.group(1))
+                        try:
+                            ip_obj = ipaddress.ip_address(src_ip)
+                            node_id = int(ip_obj) & 0xffff
                             rx_packets[node_id].append(seq)
+                            if inferred_sender_id is None:
+                                inferred_sender_id = node_id
+                        except ValueError:
+                            pass
                 
                 elif 'CSV,RTT,' in line:
                     # CSV,RTT,<seq>,<t0>,<t_ack>,<rtt_ticks>,<len>
@@ -50,16 +57,27 @@ def parse_cooja_log(filename):
                         delays.append((seq, delay_ms))
                 
                 # TX 로그 추출 (sender.c에서 출력)
+                elif 'CSV,TX,' in line:
+                    # CSV,TX,<node_id>,<seq>,<t0>,<joined>
+                    parts = line.split('CSV,TX,')[1].split(',')
+                    if len(parts) >= 2:
+                        node_id = int(parts[0])
+                        seq = int(parts[1])
+                        tx_packets[node_id].append(seq)
+
                 elif 'TX seq=' in line:
-                    # [INFO: SENDER   ] TX seq=<n> ...
+                    # [INFO: SENDER   ] TX id=<n> seq=<n> ...
                     match = re.search(r'TX seq=(\d+)', line)
                     if match:
                         seq = int(match.group(1))
-                        # 노드 ID 추출
-                        node_match = re.search(r'ID:(\d+)', line)
+                        node_match = re.search(r'TX id=(\d+)', line)
                         if node_match:
                             node_id = int(node_match.group(1))
                             tx_packets[node_id].append(seq)
+                        elif inferred_sender_id is not None:
+                            tx_packets[inferred_sender_id].append(seq)
+                        else:
+                            pending_tx_seqs.append(seq)
                 
                 # RPL 제어 패킷 카운터
                 if 'RPL:' in line or 'DIO' in line or 'DAO' in line:
@@ -68,7 +86,10 @@ def parse_cooja_log(filename):
     except FileNotFoundError:
         print(f"Error: File '{filename}' not found.")
         sys.exit(1)
-    
+
+    if inferred_sender_id is not None and pending_tx_seqs:
+        tx_packets[inferred_sender_id].extend(pending_tx_seqs)
+
     return tx_packets, rx_packets, delays, rpl_packets
 
 

@@ -185,13 +185,13 @@ trust-aware-brpl/
 ## 다음 단계
 
 ### Phase 1: 공격 노드 구현
-- [ ] Selective Forwarding 공격 코드 작성
-- [ ] 공격 확률 파라미터 설정
+- [0] Selective Forwarding 공격 코드 작성
+- [0] 공격 확률 파라미터 설정
 - [ ] Node 3를 공격 노드로 지정
 
 ### Phase 2: Trust 메커니즘
-- [ ] Trust 값 계산 (EWMA)
-- [ ] Trust 기반 Parent 선택
+- [0] Trust 값 계산 (EWMA)
+- [0] Trust 기반 Parent 선택
 - [ ] Root에서 Trust 모니터링
 
 ### Phase 3: 성능 평가

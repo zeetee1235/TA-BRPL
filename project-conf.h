@@ -21,6 +21,23 @@ extern rpl_of_t rpl_brpl;
 #define WARMUP_SECONDS 60
 #endif
 
+/* Trust (EWMA) parameters */
+#ifndef TRUST_MAX_NODES
+#define TRUST_MAX_NODES 256
+#endif
+#ifndef TRUST_SCALE
+#define TRUST_SCALE 1000
+#endif
+#ifndef TRUST_ALPHA_NUM
+#define TRUST_ALPHA_NUM 2
+#endif
+#ifndef TRUST_ALPHA_DEN
+#define TRUST_ALPHA_DEN 10
+#endif
+#ifndef TRUST_PARENT_MIN
+#define TRUST_PARENT_MIN 700
+#endif
+
 /* Keep logs readable in Cooja for experiment parsing. */
 #define LOG_LEVEL_APP LOG_LEVEL_INFO
 #define LOG_CONF_LEVEL_RPL LOG_LEVEL_INFO

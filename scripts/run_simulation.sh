@@ -4,13 +4,14 @@
 set -e
 
 # Contiki-NG 경로 자동 설정
-if [ -z "$CONTIKI_NG_PATH" ]; then
+if [ -z "$CONTIKI_NG_PATH" ] || [ "$CONTIKI_NG_PATH" = "/path/to/contiki-ng" ]; then
     export CONTIKI_NG_PATH=/home/dev/contiki-ng
 fi
 
 # Contiki-NG 경로 확인
 if [ ! -d "$CONTIKI_NG_PATH" ]; then
     echo "Error: CONTIKI_NG_PATH directory not found: $CONTIKI_NG_PATH"
+    echo "Set it like: export CONTIKI_NG_PATH=/path/to/contiki-ng"
     exit 1
 fi
 
@@ -18,8 +19,8 @@ fi
 PROJECT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )/.." && pwd )"
 cd "$PROJECT_DIR"
 
-# 시뮬레이션 파일 확인
-SIMULATION_FILE="$PROJECT_DIR/configs/simulation.csc"
+# 시뮬레이션 파일 확인 (옵션으로 경로 지정 가능)
+SIMULATION_FILE="${2:-$PROJECT_DIR/configs/simulation.csc}"
 if [ ! -f "$SIMULATION_FILE" ]; then
     echo "Error: $SIMULATION_FILE not found"
     exit 1
@@ -49,15 +50,12 @@ if [ -f "$LOG_DIR/$LOG_FILE" ]; then
     rm -f "$LOG_DIR/$LOG_FILE"
 fi
 
-# JavaScript 스크립트 생성 (시뮬레이션 시간 설정)
-SCRIPT_FILE="$PROJECT_DIR/configs/cooja_run.js"
-cat > "$SCRIPT_FILE" << EOF
-// Auto-generated Cooja script
-TIMEOUT(${SIM_TIME_MS}, log.log("SIMULATION_FINISHED\\n"); log.testOK(); );
-log.log("Headless simulation started\\n");
-log.log("Duration: ${SIM_TIME_SEC}s\\n");
-log.log("Nodes: " + sim.getMotesCount() + "\\n");
-EOF
+# ScriptRunner placeholder 채우기 (시뮬레이션 시간 설정)
+SIM_TMP="$PROJECT_DIR/configs/simulation_tmp.csc"
+sed \
+  -e "s/@SIM_TIME_MS@/${SIM_TIME_MS}/g" \
+  -e "s/@SIM_TIME_SEC@/${SIM_TIME_SEC}/g" \
+  "$SIMULATION_FILE" > "$SIM_TMP"
 
 echo "Starting simulation..."
 echo "(This will take approximately ${SIM_TIME_SEC} seconds)"
@@ -71,24 +69,58 @@ java --enable-preview -jar tools/cooja/build/libs/cooja.jar \
     --autostart \
     --contiki="$CONTIKI_NG_PATH" \
     --logdir="$LOG_DIR" \
-    "$SIMULATION_FILE" 2>&1 | tee "$LOG_DIR/cooja_output.log"
+    "$SIM_TMP" 2>&1 | tee "$LOG_DIR/cooja_output.log" &
+
+COOJA_PID=$!
+START_TS=$(date +%s)
+echo "Progress: 0% (0/${SIM_TIME_SEC}s)"
+while kill -0 "$COOJA_PID" 2>/dev/null; do
+    sleep 2
+    NOW_TS=$(date +%s)
+    ELAPSED=$((NOW_TS - START_TS))
+    if [ "$ELAPSED" -gt "$SIM_TIME_SEC" ]; then
+        ELAPSED="$SIM_TIME_SEC"
+    fi
+    if [ "$SIM_TIME_SEC" -gt 0 ]; then
+        PCT=$((ELAPSED * 100 / SIM_TIME_SEC))
+    else
+        PCT=100
+    fi
+    printf "\rProgress: %3d%% (%d/%ds)" "$PCT" "$ELAPSED" "$SIM_TIME_SEC"
+done
+wait "$COOJA_PID"
+echo ""
 
 # 실행 결과 확인
 if [ -f "$LOG_DIR/$LOG_FILE" ]; then
     echo ""
-    echo "============================================"
-    echo "Simulation completed successfully!"
-    echo "============================================"
-    echo "Log saved to: $LOG_DIR/$LOG_FILE"
-    echo "Lines in log: $(wc -l < "$LOG_DIR/$LOG_FILE")"
-    echo ""
-    echo "Analyze results with:"
-    echo "  python3 tools/parse_results.py $LOG_DIR/$LOG_FILE"
-    echo ""
+echo "============================================"
+echo "Simulation completed successfully!"
+echo "============================================"
+echo "Log saved to: $LOG_DIR/$LOG_FILE"
+echo "Lines in log: $(wc -l < "$LOG_DIR/$LOG_FILE")"
+echo ""
+
+# Auto-parse and store results
+RESULTS_DIR="$PROJECT_DIR/results"
+RUN_STAMP="$(date +%Y%m%d-%H%M%S)"
+RUN_DIR="$RESULTS_DIR/run-$RUN_STAMP"
+mkdir -p "$RUN_DIR"
+
+PARSE_OUT="$RUN_DIR/parse_results.txt"
+echo "Parsing results..."
+python3 "$PROJECT_DIR/tools/parse_results.py" "$LOG_DIR/$LOG_FILE" | tee "$PARSE_OUT"
+echo ""
+
+cp -f "$LOG_DIR/$LOG_FILE" "$RUN_DIR/"
+cp -f "$LOG_DIR/cooja_output.log" "$RUN_DIR/" 2>/dev/null || true
+
+echo "Results saved to: $RUN_DIR"
+echo ""
 else
     echo ""
     echo "Warning: Log file not found!"
     echo "Check $LOG_DIR/cooja_output.log for errors"
 fi
 
-# cooja_run.js는 simulation.csc에서 참조하므로 삭제하지 않음
+rm -f "$SIM_TMP"

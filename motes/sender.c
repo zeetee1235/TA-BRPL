@@ -12,6 +12,8 @@
 #include "net/ipv6/uiplib.h"
 #include "net/ipv6/uip-ds6-route.h"
 #include "net/routing/routing.h"
+#include "net/routing/rpl-lite/rpl.h"
+#include "net/routing/rpl-lite/rpl-icmp6.h"
 #include "net/ipv6/simple-udp.h"
 
 #include <stdint.h>
@@ -91,6 +93,7 @@ PROCESS_THREAD(sender_process, ev, data)
 {
   static struct etimer periodic_timer;
   static struct etimer warmup_timer;
+  static struct etimer dis_timer;
   static uint32_t seq;
   static uint8_t last_reachable;
   static uint8_t warmup_done;
@@ -105,9 +108,17 @@ PROCESS_THREAD(sender_process, ev, data)
 
   simple_udp_register(&udp_conn, UDP_PORT, NULL, UDP_PORT, echo_rx_callback);
   etimer_set(&periodic_timer, SEND_INTERVAL);
-  etimer_set(&warmup_timer, WARMUP_SECONDS * CLOCK_SECOND);
+  etimer_set(&dis_timer, 30 * CLOCK_SECOND);
+  if(WARMUP_SECONDS > 0) {
+    etimer_set(&warmup_timer, WARMUP_SECONDS * CLOCK_SECOND);
+  } else {
+    etimer_stop(&warmup_timer);
+  }
   last_reachable = 0;
-  warmup_done = 0;
+  warmup_done = (WARMUP_SECONDS == 0);
+  if(warmup_done) {
+    LOG_INFO("warmup complete, start sending\n");
+  }
 
   while(1) {
     PROCESS_WAIT_EVENT();
@@ -142,6 +153,12 @@ PROCESS_THREAD(sender_process, ev, data)
       LOG_INFO_("\n");
     }
 
+    if(etimer_expired(&dis_timer) && !NETSTACK_ROUTING.node_has_joined()) {
+      LOG_INFO("send DIS (not joined)\n");
+      rpl_icmp6_dis_output(NULL);
+      etimer_reset(&dis_timer);
+    }
+
     if(!warmup_done) {
       LOG_INFO("warmup in progress\n");
       continue;
@@ -152,8 +169,16 @@ PROCESS_THREAD(sender_process, ev, data)
     snprintf(buf, sizeof(buf), "seq=%lu t0=%lu",
              (unsigned long)seq, (unsigned long)t0);
     simple_udp_sendto(&udp_conn, buf, strlen(buf), &root_ipaddr);
-    LOG_INFO("TX seq=%lu t0=%lu joined=%u\n",
-             (unsigned long)seq, (unsigned long)t0, (unsigned)joined);
+    LOG_INFO("TX id=%u seq=%lu t0=%lu joined=%u\n",
+             (unsigned)linkaddr_node_addr.u8[LINKADDR_SIZE - 1],
+             (unsigned long)seq,
+             (unsigned long)t0,
+             (unsigned)joined);
+    printf("CSV,TX,%u,%lu,%lu,%u\n",
+           (unsigned)linkaddr_node_addr.u8[LINKADDR_SIZE - 1],
+           (unsigned long)seq,
+           (unsigned long)t0,
+           (unsigned)joined);
   }
 
   PROCESS_END();

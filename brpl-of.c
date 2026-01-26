@@ -12,15 +12,41 @@
 #define LOG_MODULE "BRPL"
 #define LOG_LEVEL LOG_LEVEL_RPL
 
+#include <string.h>
+
 #ifndef BRPL_QUEUE_WEIGHT
 #define BRPL_QUEUE_WEIGHT (LINK_STATS_ETX_DIVISOR / 4)
 #endif
+
+#ifndef TRUST_MAX_NODES
+#define TRUST_MAX_NODES 256
+#endif
+#ifndef TRUST_SCALE
+#define TRUST_SCALE 1000
+#endif
+#ifndef TRUST_ALPHA_NUM
+#define TRUST_ALPHA_NUM 2
+#endif
+#ifndef TRUST_ALPHA_DEN
+#define TRUST_ALPHA_DEN 10
+#endif
+#ifndef TRUST_PARENT_MIN
+#define TRUST_PARENT_MIN 700
+#endif
+
+struct trust_entry {
+  uint16_t trust;
+  uint8_t seen;
+};
+
+static struct trust_entry trust_table[TRUST_MAX_NODES];
 
 /*---------------------------------------------------------------------------*/
 static void
 reset(void)
 {
   LOG_INFO("reset BRPL-OF\n");
+  memset(trust_table, 0, sizeof(trust_table));
 }
 /*---------------------------------------------------------------------------*/
 static uint16_t
@@ -50,6 +76,65 @@ queue_penalty(void)
   size_t used = QUEUEBUF_NUM > free ? (QUEUEBUF_NUM - free) : 0;
   uint32_t penalty = (uint32_t)used * (uint32_t)BRPL_QUEUE_WEIGHT;
   return (uint16_t)MIN(penalty, 0xffff);
+}
+/*---------------------------------------------------------------------------*/
+static uint16_t
+trust_sample_from_etx(uint16_t etx)
+{
+  uint32_t sample;
+
+  if(etx == 0) {
+    return TRUST_SCALE;
+  }
+  if(etx == 0xffff) {
+    return 0;
+  }
+
+  sample = ((uint32_t)TRUST_SCALE * (uint32_t)LINK_STATS_ETX_DIVISOR) / etx;
+  if(sample > TRUST_SCALE) {
+    sample = TRUST_SCALE;
+  }
+  return (uint16_t)sample;
+}
+/*---------------------------------------------------------------------------*/
+static uint16_t
+trust_update_from_nbr(rpl_nbr_t *nbr)
+{
+  const struct link_stats *stats;
+  const linkaddr_t *lladdr;
+  struct trust_entry *e;
+  uint16_t node_id;
+  uint16_t sample;
+  uint32_t updated;
+
+  stats = rpl_neighbor_get_link_stats(nbr);
+  if(stats == NULL) {
+    return TRUST_SCALE;
+  }
+  lladdr = link_stats_get_lladdr(stats);
+  if(lladdr == NULL) {
+    return TRUST_SCALE;
+  }
+
+  node_id = lladdr->u8[LINKADDR_SIZE - 1];
+  if(node_id >= TRUST_MAX_NODES) {
+    return TRUST_SCALE;
+  }
+
+  e = &trust_table[node_id];
+  sample = trust_sample_from_etx(stats->etx);
+
+  if(!e->seen) {
+    e->seen = 1;
+    e->trust = sample;
+    return e->trust;
+  }
+
+  updated = (uint32_t)TRUST_ALPHA_NUM * sample +
+            (uint32_t)(TRUST_ALPHA_DEN - TRUST_ALPHA_NUM) * e->trust;
+  updated = (updated + (TRUST_ALPHA_DEN / 2)) / TRUST_ALPHA_DEN;
+  e->trust = (uint16_t)updated;
+  return e->trust;
 }
 /*---------------------------------------------------------------------------*/
 static uint16_t
@@ -110,11 +195,12 @@ static int
 nbr_is_acceptable_parent(rpl_nbr_t *nbr)
 {
   uint16_t path_cost = nbr_path_cost(nbr);
+  uint16_t trust = trust_update_from_nbr(nbr);
   int usable = nbr_has_usable_link(nbr);
-  int ok = usable && path_cost <= 60000;
+  int ok = usable && path_cost <= 60000 && trust >= TRUST_PARENT_MIN;
   if(!ok) {
-    LOG_INFO("reject parent %p: etx=%u path_cost=%u\n",
-             (void *)nbr, nbr_link_metric(nbr), path_cost);
+    LOG_INFO("reject parent %p: etx=%u path_cost=%u trust=%u\n",
+             (void *)nbr, nbr_link_metric(nbr), path_cost, trust);
   }
   return ok;
 }

@@ -29,10 +29,34 @@
 #define UDP_PORT 8765
 #define ROOT_START_RETRY_SECONDS 2
 #define ROOT_START_RETRY (ROOT_START_RETRY_SECONDS * CLOCK_SECOND)
+
+#ifndef TRUST_MAX_NODES
+#define TRUST_MAX_NODES 256
+#endif
+#ifndef TRUST_SCALE
+#define TRUST_SCALE 1000
+#endif
+#ifndef TRUST_ALPHA_NUM
+#define TRUST_ALPHA_NUM 2
+#endif
+#ifndef TRUST_ALPHA_DEN
+#define TRUST_ALPHA_DEN 10
+#endif
+
 static struct simple_udp_connection udp_conn;
 static struct etimer root_timer;
 static uip_ipaddr_t root_ipaddr;
 static uint8_t root_started;
+
+struct trust_entry {
+  uint32_t last_seq;
+  uint32_t rx_total;
+  uint32_t missing_total;
+  uint16_t trust;
+  uint8_t seen;
+};
+
+static struct trust_entry trust_table[TRUST_MAX_NODES];
 
 
 static void
@@ -97,6 +121,61 @@ parse_payload(const uint8_t *data, uint16_t len, uint32_t *seq_out, uint32_t *t_
   return 0;
 }
 
+static uint16_t
+node_id_from_addr(const uip_ipaddr_t *addr)
+{
+  return (uint16_t)uip_ntohs(addr->u16[7]);
+}
+
+static void
+trust_update(uint16_t node_id, uint32_t seq)
+{
+  uint32_t missed;
+  uint32_t sample;
+  uint32_t updated;
+  struct trust_entry *e;
+
+  if(node_id >= TRUST_MAX_NODES) {
+    return;
+  }
+
+  e = &trust_table[node_id];
+  if(!e->seen) {
+    e->seen = 1;
+    e->last_seq = seq;
+    e->rx_total = 1;
+    e->missing_total = 0;
+    e->trust = TRUST_SCALE;
+    printf("CSV,TRUST,%u,%lu,%lu,%u\n",
+           (unsigned)node_id,
+           (unsigned long)seq,
+           0ul,
+           (unsigned)e->trust);
+    return;
+  }
+
+  if(seq <= e->last_seq) {
+    return;
+  }
+
+  missed = (seq > e->last_seq + 1) ? (seq - e->last_seq - 1) : 0;
+  sample = TRUST_SCALE / (1 + missed);
+  updated = (TRUST_ALPHA_NUM * sample) +
+            (TRUST_ALPHA_DEN - TRUST_ALPHA_NUM) * e->trust;
+  updated = (updated + (TRUST_ALPHA_DEN / 2)) / TRUST_ALPHA_DEN;
+
+  e->trust = (uint16_t)updated;
+  e->last_seq = seq;
+  e->rx_total++;
+  e->missing_total += missed;
+
+  printf("CSV,TRUST,%u,%lu,%lu,%u\n",
+         (unsigned)node_id,
+         (unsigned long)seq,
+         (unsigned long)missed,
+         (unsigned)e->trust);
+}
+
 static void
 udp_rx_callback(struct simple_udp_connection *c,
                 const uip_ipaddr_t *sender_addr,
@@ -116,10 +195,13 @@ udp_rx_callback(struct simple_udp_connection *c,
   if(ok) {
     char buf[64];
     uip_ipaddr_t reply_addr;
+    uint16_t node_id;
     uip_ipaddr_copy(&reply_addr, sender_addr);
     if(uip_sr_update_node(NULL, &reply_addr, &root_ipaddr, UIP_SR_INFINITE_LIFETIME) == NULL) {
       LOG_WARN("failed to update SR route for sender\n");
     }
+    node_id = node_id_from_addr(sender_addr);
+    trust_update(node_id, seq);
     printf("CSV,RX,");
     uiplib_ipaddr_print(&reply_addr);
     printf(",%lu,%lu,%u\n",
