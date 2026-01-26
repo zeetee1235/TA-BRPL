@@ -1,0 +1,36 @@
+# Contiki-NG build artifacts
+*.cooja
+*.a
+*.o
+*.map
+*.d
+obj_cooja/
+symbols.c
+symbols.h
+
+# Cooja logs
+COOJA.testlog
+*.testlog
+*.pcap
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Results and data
+results/
+*.csv
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db

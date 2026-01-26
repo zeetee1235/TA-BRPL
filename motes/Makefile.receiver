@@ -1,0 +1,14 @@
+CONTIKI_PROJECT = receiver_root
+all: $(CONTIKI_PROJECT)
+
+# BRPL objective function
+PROJECT_SOURCEFILES += ../brpl-of.c
+
+# CONTIKI_NG_PATH 기본값 설정
+ifndef CONTIKI_NG_PATH
+  CONTIKI_NG_PATH=/home/dev/contiki-ng
+endif
+
+CONTIKI = $(CONTIKI_NG_PATH)
+
+include $(CONTIKI)/Makefile.include
