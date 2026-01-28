@@ -18,6 +18,7 @@
 #include "net/ipv6/uip-sr.h"
 #include "net/ipv6/simple-udp.h"
 #include "net/ipv6/uip-nd6.h"
+#include "net/linkaddr.h"
 
 #include <stdint.h>
 #include <stdio.h>
@@ -230,6 +231,11 @@ PROCESS_THREAD(receiver_root_process, ev, data)
   PROCESS_BEGIN();
 
   LOG_INFO("boot\n");
+#ifdef BRPL_MODE
+  printf("CSV,BRPL_MODE,%u,1\n", (unsigned)linkaddr_node_addr.u8[LINKADDR_SIZE - 1]);
+#else
+  printf("CSV,BRPL_MODE,%u,0\n", (unsigned)linkaddr_node_addr.u8[LINKADDR_SIZE - 1]);
+#endif
 
   /* Establish RPL root and prefix so sensors can auto-configure. */
   set_root_address_and_prefix();

@@ -243,20 +243,80 @@
     <location_y>0</location_y>
   </plugin>
   <plugin>
+    org.contikios.cooja.serialsocket.SerialSocketServer
+    <mote_arg>0</mote_arg>
+    <plugin_config>
+      <port>60001</port>
+      <bound>true</bound>
+    </plugin_config>
+    <width>360</width>
+    <z>3</z>
+    <height>120</height>
+    <location_x>20</location_x>
+    <location_y>400</location_y>
+  </plugin>
+  <plugin>
     org.contikios.cooja.plugins.ScriptRunner
     <plugin_config>
-      <script>// Auto-generated Cooja script
+      <script><![CDATA[
+// Auto-generated Cooja script
 TIMEOUT(@SIM_TIME_MS@, log.log("SIMULATION_FINISHED\n"); log.testOK(); );
 log.log("Headless simulation started\n");
 log.log("Duration: @SIM_TIME_SEC@s\n");
 log.log("Nodes: " + sim.getMotesCount() + "\n");
+var trustFile = "@TRUST_FEEDBACK_PATH@";
+var lastCheckMs = 0;
+var lastPos = 0;
+function pollTrust() {
+  try {
+    var file = new java.io.File(trustFile);
+    if(!file.exists()) {
+      return;
+    }
+    var raf = new java.io.RandomAccessFile(file, "r");
+    raf.seek(lastPos);
+    var line;
+    while((line = raf.readLine()) != null) {
+      line = String(line).trim();
+      if(line.length() == 0) {
+        continue;
+      }
+      var parts = line.split(",");
+      if(parts.length < 3) {
+        continue;
+      }
+      if(parts[0] != "TRUST") {
+        continue;
+      }
+      var node = parts[1];
+      var trust = parts[2];
+      var cmd = "TRUST," + node + "," + trust + "\n";
+      for(var i = 0; i < sim.getMotesCount(); i++) {
+        var mote = sim.getMote(i);
+        try {
+          mote.getInterfaces().getLog().writeString(cmd);
+        } catch (e) {
+        }
+      }
+      log.log("INJECT " + cmd);
+    }
+    lastPos = raf.getFilePointer();
+    raf.close();
+  } catch (e) {
+  }
+}
 while(true) {
   YIELD();
   if(msg != null) {
     log.log(msg + "\n");
   }
+  var now = java.lang.System.currentTimeMillis();
+  if(now - lastCheckMs > 200) {
+    pollTrust();
+    lastCheckMs = now;
+  }
 }
-</script>
+]]></script>
     </plugin_config>
   </plugin>
   <plugin>

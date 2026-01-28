@@ -17,8 +17,11 @@
 #include "net/routing/routing.h"
 #include "net/routing/rpl-lite/rpl.h"
 #include "net/routing/rpl-lite/rpl-icmp6.h"
+#include "dev/serial-line.h"
 
 #include <stdint.h>
+
+#include "brpl-trust.h"
 
 #define LOG_MODULE "ATTACK"
 #define LOG_LEVEL LOG_LEVEL_INFO
@@ -95,6 +98,18 @@ is_forwarded_udp_to_root(void)
   return uip_ipaddr_cmp(&UIP_IP_BUF->destipaddr, &root_ipaddr);
 }
 
+static void
+handle_trust_input(const char *line)
+{
+  unsigned node_id = 0;
+  unsigned trust = 0;
+  if(sscanf(line, "TRUST,%u,%u", &node_id, &trust) == 2) {
+    uint16_t self_id = (uint16_t)linkaddr_node_addr.u8[LINKADDR_SIZE - 1];
+    brpl_trust_override((uint16_t)node_id, (uint16_t)trust);
+    printf("CSV,TRUST_IN,%u,%u,%u\n", self_id, node_id, trust);
+  }
+}
+
 static enum netstack_ip_action
 ip_output(const linkaddr_t *localdest)
 {
@@ -143,10 +158,17 @@ PROCESS_THREAD(attacker_process, ev, data)
 
   uip_ip6addr(&root_ipaddr, 0xaaaa,0,0,0,0,0,0,1);
 
+#ifdef BRPL_MODE
+  printf("CSV,BRPL_MODE,%u,1\n", (unsigned)linkaddr_node_addr.u8[LINKADDR_SIZE - 1]);
+#else
+  printf("CSV,BRPL_MODE,%u,0\n", (unsigned)linkaddr_node_addr.u8[LINKADDR_SIZE - 1]);
+#endif
+
   random_init();
 
   netstack_ip_packet_processor_add(&packet_processor);
   rpl_set_leaf_only(0);
+  serial_line_init();
 
   etimer_set(&dis_timer, 30 * CLOCK_SECOND);
   etimer_set(&parent_timer, 30 * CLOCK_SECOND);
@@ -164,6 +186,9 @@ PROCESS_THREAD(attacker_process, ev, data)
 
   while(1) {
     PROCESS_WAIT_EVENT();
+    if(ev == serial_line_event_message && data != NULL) {
+      handle_trust_input((const char *)data);
+    }
     if(!attack_enabled && ATTACK_WARMUP_SECONDS > 0 && etimer_expired(&warmup_timer)) {
       attack_enabled = 1;
       LOG_INFO("attack enabled: drop=%u%%\n", (unsigned)ATTACK_DROP_PCT);

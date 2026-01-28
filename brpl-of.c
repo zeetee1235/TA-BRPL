@@ -14,6 +14,7 @@
 
 #include <string.h>
 
+#include "motes/brpl-trust.h"
 #ifndef BRPL_QUEUE_WEIGHT
 #define BRPL_QUEUE_WEIGHT (LINK_STATS_ETX_DIVISOR / 4)
 #endif
@@ -46,7 +47,24 @@ static void
 reset(void)
 {
   LOG_INFO("reset BRPL-OF\n");
+  printf("CSV,BRPL_RESET\n");
   memset(trust_table, 0, sizeof(trust_table));
+}
+/*---------------------------------------------------------------------------*/
+void
+brpl_trust_override(uint16_t node_id, uint16_t trust)
+{
+  struct trust_entry *e;
+  if(node_id >= TRUST_MAX_NODES) {
+    return;
+  }
+  if(trust > TRUST_SCALE) {
+    trust = TRUST_SCALE;
+  }
+  e = &trust_table[node_id];
+  e->seen = 1;
+  e->trust = trust;
+  printf("CSV,TRUST_OVR,%u,%u\n", (unsigned)node_id, (unsigned)trust);
 }
 /*---------------------------------------------------------------------------*/
 static uint16_t
@@ -127,6 +145,7 @@ trust_update_from_nbr(rpl_nbr_t *nbr)
   if(!e->seen) {
     e->seen = 1;
     e->trust = sample;
+    printf("CSV,TRUST_OF,%u,%u\n", (unsigned)node_id, (unsigned)e->trust);
     return e->trust;
   }
 
@@ -134,6 +153,7 @@ trust_update_from_nbr(rpl_nbr_t *nbr)
             (uint32_t)(TRUST_ALPHA_DEN - TRUST_ALPHA_NUM) * e->trust;
   updated = (updated + (TRUST_ALPHA_DEN / 2)) / TRUST_ALPHA_DEN;
   e->trust = (uint16_t)updated;
+  printf("CSV,TRUST_OF,%u,%u\n", (unsigned)node_id, (unsigned)e->trust);
   return e->trust;
 }
 /*---------------------------------------------------------------------------*/
@@ -199,8 +219,11 @@ nbr_is_acceptable_parent(rpl_nbr_t *nbr)
   int usable = nbr_has_usable_link(nbr);
   int ok = usable && path_cost <= 60000 && trust >= TRUST_PARENT_MIN;
   if(!ok) {
-    LOG_INFO("reject parent %p: etx=%u path_cost=%u trust=%u\n",
-             (void *)nbr, nbr_link_metric(nbr), path_cost, trust);
+    printf("CSV,PARENT_DECISION,reject,%u,%u\n",
+           nbr_link_metric(nbr), trust);
+  } else {
+    printf("CSV,PARENT_DECISION,accept,%u,%u\n",
+           nbr_link_metric(nbr), trust);
   }
   return ok;
 }

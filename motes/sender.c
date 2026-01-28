@@ -15,10 +15,13 @@
 #include "net/routing/rpl-lite/rpl.h"
 #include "net/routing/rpl-lite/rpl-icmp6.h"
 #include "net/ipv6/simple-udp.h"
+#include "dev/serial-line.h"
 
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+
+#include "brpl-trust.h"
 
 #define LOG_MODULE "SENDER"
 #define LOG_LEVEL LOG_LEVEL_INFO
@@ -105,6 +108,18 @@ echo_rx_callback(struct simple_udp_connection *c,
          (unsigned)datalen);
 }
 
+static void
+handle_trust_input(const char *line)
+{
+  unsigned node_id = 0;
+  unsigned trust = 0;
+  if(sscanf(line, "TRUST,%u,%u", &node_id, &trust) == 2) {
+    uint16_t self_id = (uint16_t)linkaddr_node_addr.u8[LINKADDR_SIZE - 1];
+    brpl_trust_override((uint16_t)node_id, (uint16_t)trust);
+    printf("CSV,TRUST_IN,%u,%u,%u\n", self_id, node_id, trust);
+  }
+}
+
 PROCESS(sender_process, "UDP sender (sensor)");
 AUTOSTART_PROCESSES(&sender_process);
 
@@ -125,7 +140,14 @@ PROCESS_THREAD(sender_process, ev, data)
   /* Root is aaaa::1 as configured by receiver_root.c. */
   uip_ip6addr(&root_ipaddr, 0xaaaa,0,0,0,0,0,0,1);
 
+#ifdef BRPL_MODE
+  printf("CSV,BRPL_MODE,%u,1\n", (unsigned)linkaddr_node_addr.u8[LINKADDR_SIZE - 1]);
+#else
+  printf("CSV,BRPL_MODE,%u,0\n", (unsigned)linkaddr_node_addr.u8[LINKADDR_SIZE - 1]);
+#endif
+
   rpl_set_leaf_only(0);
+  serial_line_init();
 
   simple_udp_register(&udp_conn, UDP_PORT, NULL, UDP_PORT, echo_rx_callback);
   etimer_set(&periodic_timer, SEND_INTERVAL);
@@ -143,6 +165,10 @@ PROCESS_THREAD(sender_process, ev, data)
 
   while(1) {
     PROCESS_WAIT_EVENT();
+
+    if(ev == serial_line_event_message && data != NULL) {
+      handle_trust_input((const char *)data);
+    }
 
     if(etimer_expired(&warmup_timer)) {
       warmup_done = 1;

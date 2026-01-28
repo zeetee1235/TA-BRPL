@@ -34,6 +34,7 @@ SIM_TIME_MS=$((SIM_TIME_SEC * 1000))
 LOG_DIR="$PROJECT_DIR/logs"
 LOG_FILE="COOJA.testlog"
 mkdir -p "$LOG_DIR"
+TRUST_FEEDBACK_PATH="$LOG_DIR/trust_updates.txt"
 
 echo "============================================"
 echo "Running Cooja in Headless Mode"
@@ -57,10 +58,27 @@ make -C "$PROJECT_DIR/motes" -f Makefile.attacker TARGET=cooja clean >/dev/null 
 
 # ScriptRunner placeholder 채우기 (시뮬레이션 시간 설정)
 SIM_TMP="$PROJECT_DIR/configs/simulation_tmp.csc"
+touch "$TRUST_FEEDBACK_PATH"
 sed \
   -e "s/@SIM_TIME_MS@/${SIM_TIME_MS}/g" \
   -e "s/@SIM_TIME_SEC@/${SIM_TIME_SEC}/g" \
+  -e "s#@TRUST_FEEDBACK_PATH@#${TRUST_FEEDBACK_PATH}#g" \
   "$SIMULATION_FILE" > "$SIM_TMP"
+
+# Disable SerialSocketServer binding in headless mode if requested
+if [ "${SERIAL_SOCKET_DISABLE:-0}" = "1" ]; then
+    python3 - <<'PY'
+import re
+from pathlib import Path
+path = Path("configs/simulation_tmp.csc")
+data = path.read_text()
+data = re.sub(r"<plugin>\s*org\.contikios\.cooja\.serialsocket\.SerialSocketServer.*?</plugin>\s*", "", data, flags=re.S)
+path.write_text(data)
+PY
+    if rg -q "SerialSocketServer" "$SIM_TMP"; then
+        echo "Warning: SerialSocketServer still present in $SIM_TMP"
+    fi
+fi
 
 echo "Starting simulation..."
 echo "(This will take approximately ${SIM_TIME_SEC} seconds)"
@@ -128,4 +146,6 @@ else
     echo "Check $LOG_DIR/cooja_output.log for errors"
 fi
 
-rm -f "$SIM_TMP"
+if [ "${KEEP_SIM_TMP:-0}" != "1" ]; then
+    rm -f "$SIM_TMP"
+fi
