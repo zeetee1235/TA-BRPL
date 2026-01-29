@@ -6,8 +6,8 @@
     <motedelay_us>1000000</motedelay_us>
     <radiomedium>
       org.contikios.cooja.radiomediums.UDGM
-      <transmitting_range>50.0</transmitting_range>
-      <interference_range>100.0</interference_range>
+      <transmitting_range>45.0</transmitting_range>
+      <interference_range>90.0</interference_range>
       <success_ratio_tx>1.0</success_ratio_tx>
       <success_ratio_rx>1.0</success_ratio_rx>
     </radiomedium>
@@ -20,7 +20,7 @@
       <identifier>root_type</identifier>
       <description>Root Node</description>
       <source>[CONFIG_DIR]/../motes/receiver_root.c</source>
-      <commands>make -B -C ../motes -f Makefile.receiver -j receiver_root.cooja TARGET=cooja DEFINES=BRPL_MODE=1</commands>
+      <commands>make -C ../motes -f Makefile.receiver -j receiver_root.cooja TARGET=cooja DEFINES=BRPL_MODE=0</commands>
       <moteinterface>org.contikios.cooja.interfaces.Position</moteinterface>
       <moteinterface>org.contikios.cooja.interfaces.Battery</moteinterface>
       <moteinterface>org.contikios.cooja.contikimote.interfaces.ContikiVib</moteinterface>
@@ -45,7 +45,7 @@
       <identifier>sender_type</identifier>
       <description>Sender Node</description>
       <source>[CONFIG_DIR]/../motes/sender.c</source>
-      <commands>make -B -C ../motes -f Makefile.sender -j sender.cooja TARGET=cooja DEFINES=BRPL_MODE=1,SEND_INTERVAL_SECONDS=30,WARMUP_SECONDS=120</commands>
+      <commands>make -C ../motes -f Makefile.sender -j sender.cooja TARGET=cooja DEFINES=BRPL_MODE=0,SEND_INTERVAL_SECONDS=30,WARMUP_SECONDS=120</commands>
       <moteinterface>org.contikios.cooja.interfaces.Position</moteinterface>
       <moteinterface>org.contikios.cooja.interfaces.Battery</moteinterface>
       <moteinterface>org.contikios.cooja.contikimote.interfaces.ContikiVib</moteinterface>
@@ -70,7 +70,7 @@
       <identifier>attacker_type</identifier>
       <description>Selective Forwarding Attacker</description>
       <source>[CONFIG_DIR]/../motes/attacker.c</source>
-      <commands>make -B -C ../motes -f Makefile.attacker -j attacker.cooja TARGET=cooja DEFINES=BRPL_MODE=1,ATTACK_DROP_PCT=50,WARMUP_SECONDS=120</commands>
+      <commands>make -C ../motes -f Makefile.attacker -j attacker.cooja TARGET=cooja DEFINES=BRPL_MODE=0,ATTACK_DROP_PCT=30,WARMUP_SECONDS=120</commands>
       <moteinterface>org.contikios.cooja.interfaces.Position</moteinterface>
       <moteinterface>org.contikios.cooja.interfaces.Battery</moteinterface>
       <moteinterface>org.contikios.cooja.contikimote.interfaces.ContikiVib</moteinterface>
@@ -107,11 +107,11 @@
       </interface_config>
       <motetype_identifier>root_type</motetype_identifier>
     </mote>
-    <!-- Node 2: Sender at (30, 0) -->
+    <!-- Node 2: Attacker at (20, 0) -->
     <mote>
       <interface_config>
         org.contikios.cooja.interfaces.Position
-        <x>30.0</x>
+        <x>20.0</x>
         <y>0.0</y>
         <z>0.0</z>
       </interface_config>
@@ -123,9 +123,9 @@
         org.contikios.cooja.contikimote.interfaces.ContikiRadio
         <bitrate>250.0</bitrate>
       </interface_config>
-      <motetype_identifier>sender_type</motetype_identifier>
+      <motetype_identifier>attacker_type</motetype_identifier>
     </mote>
-    <!-- Node 3: Attacker at (60, 0) -->
+    <!-- Node 3: Sender at (60, 0) -->
     <mote>
       <interface_config>
         org.contikios.cooja.interfaces.Position
@@ -141,13 +141,13 @@
         org.contikios.cooja.contikimote.interfaces.ContikiRadio
         <bitrate>250.0</bitrate>
       </interface_config>
-      <motetype_identifier>attacker_type</motetype_identifier>
+      <motetype_identifier>sender_type</motetype_identifier>
     </mote>
-    <!-- Node 4: Sender at (90, 0) -->
+    <!-- Node 4: Sender at (50, 0) -->
     <mote>
       <interface_config>
         org.contikios.cooja.interfaces.Position
-        <x>90.0</x>
+        <x>50.0</x>
         <y>0.0</y>
         <z>0.0</z>
       </interface_config>
@@ -161,12 +161,12 @@
       </interface_config>
       <motetype_identifier>sender_type</motetype_identifier>
     </mote>
-    <!-- Node 5: Sender at (30, 30) -->
+    <!-- Node 5: Sender at (60, 20) -->
     <mote>
       <interface_config>
         org.contikios.cooja.interfaces.Position
-        <x>30.0</x>
-        <y>30.0</y>
+        <x>60.0</x>
+        <y>20.0</y>
         <z>0.0</z>
       </interface_config>
       <interface_config>
@@ -179,12 +179,12 @@
       </interface_config>
       <motetype_identifier>sender_type</motetype_identifier>
     </mote>
-    <!-- Node 6: Sender at (60, 30) -->
+    <!-- Node 6: Sender at (60, -20) -->
     <mote>
       <interface_config>
         org.contikios.cooja.interfaces.Position
         <x>60.0</x>
-        <y>30.0</y>
+        <y>-20.0</y>
         <z>0.0</z>
       </interface_config>
       <interface_config>
@@ -197,12 +197,12 @@
       </interface_config>
       <motetype_identifier>sender_type</motetype_identifier>
     </mote>
-    <!-- Node 7: Sender at (30, -30) -->
+    <!-- Node 7: Sender at (50, 20) -->
     <mote>
       <interface_config>
         org.contikios.cooja.interfaces.Position
-        <x>30.0</x>
-        <y>-30.0</y>
+        <x>50.0</x>
+        <y>20.0</y>
         <z>0.0</z>
       </interface_config>
       <interface_config>
@@ -215,12 +215,12 @@
       </interface_config>
       <motetype_identifier>sender_type</motetype_identifier>
     </mote>
-    <!-- Node 8: Sender at (60, -30) -->
+    <!-- Node 8: Sender at (50, -20) -->
     <mote>
       <interface_config>
         org.contikios.cooja.interfaces.Position
-        <x>60.0</x>
-        <y>-30.0</y>
+        <x>50.0</x>
+        <y>-20.0</y>
         <z>0.0</z>
       </interface_config>
       <interface_config>
@@ -243,28 +243,15 @@
     <location_y>0</location_y>
   </plugin>
   <plugin>
-    org.contikios.cooja.serialsocket.SerialSocketServer
-    <mote_arg>0</mote_arg>
-    <plugin_config>
-      <port>60001</port>
-      <bound>true</bound>
-    </plugin_config>
-    <width>360</width>
-    <z>3</z>
-    <height>120</height>
-    <location_x>20</location_x>
-    <location_y>400</location_y>
-  </plugin>
-  <plugin>
     org.contikios.cooja.plugins.ScriptRunner
     <plugin_config>
       <script><![CDATA[
 // Auto-generated Cooja script
-TIMEOUT(@SIM_TIME_MS@, log.log("SIMULATION_FINISHED\n"); log.testOK(); );
+TIMEOUT(600000, log.log("SIMULATION_FINISHED\n"); log.testOK(); );
 log.log("Headless simulation started\n");
-log.log("Duration: @SIM_TIME_SEC@s\n");
+log.log("Duration: 600s\n");
 log.log("Nodes: " + sim.getMotesCount() + "\n");
-var trustFile = "@TRUST_FEEDBACK_PATH@";
+var trustFile = "/home/dev/WSN-IoT/trust-aware-brpl/test_temp/trust_feedback.txt";
 var lastCheckMs = 0;
 var lastPos = 0;
 function pollTrust() {

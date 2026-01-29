@@ -9,7 +9,7 @@ cd "$PROJECT_DIR"
 
 # Configuration
 SIM_TIME=300  # 5 minutes per simulation
-ATTACK_RATES=(0 30 50 70)  # Drop percentages
+ATTACK_RATES=(30 50 70)  # Drop percentages (only for attack scenarios)
 SEEDS=(123456 234567 345678 456789 567890)  # 5 seeds for statistical stability
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 RESULTS_BASE="results/experiments-$TIMESTAMP"
@@ -17,17 +17,14 @@ RESULTS_BASE="results/experiments-$TIMESTAMP"
 mkdir -p "$RESULTS_BASE"
 
 # Scenarios definition: routing,has_attack,trust_enabled
+# 6 ESSENTIAL scenarios only
 declare -A SCENARIOS=(
-    # Essential 6 scenarios
     ["1_mrhof_normal_notrust"]="MRHOF,NO_ATTACK,0"
     ["2_brpl_normal_notrust"]="BRPL,NO_ATTACK,0"
     ["3_mrhof_attack_notrust"]="MRHOF,ATTACK,0"
     ["4_brpl_attack_notrust"]="BRPL,ATTACK,0"
     ["5_mrhof_attack_trust"]="MRHOF,ATTACK,1"
     ["6_brpl_attack_trust"]="BRPL,ATTACK,1"
-    # Optional (overhead check)
-    ["7_mrhof_normal_trust"]="MRHOF,NO_ATTACK,1"
-    ["8_brpl_normal_trust"]="BRPL,NO_ATTACK,1"
 )
 
 # Color output
@@ -140,7 +137,7 @@ for scenario_name in $(echo "${!SCENARIOS[@]}" | tr ' ' '\n' | sort); do
                 -e "s/@SIM_TIME_SEC@/${SIM_TIME}/g" \
                 -e "s|@TRUST_FEEDBACK_PATH@|${TRUST_FEEDBACK_FILE}|g" \
                 -e "s/BRPL_MODE=[0-9]/BRPL_MODE=${BRPL_MODE}/g" \
-                -e "s/ATTACK_DROP_PCT=[0-9]*/ATTACK_DROP_PCT=${attack_rate}/g" \
+                -e "s/ATTACK_DROP_PCT=[0-9][0-9]*/ATTACK_DROP_PCT=${attack_rate}/g" \
                 "$PROJECT_DIR/$BASE_CONFIG" > "$TEMP_CONFIG"
 
             # Disable SerialSocketServer for headless runs (sandbox/network restrictions)
@@ -161,14 +158,6 @@ for scenario_name in $(echo "${!SCENARIOS[@]}" | tr ' ' '\n' | sort); do
             # CRITICAL: Delete entire build directory to force full recompilation
             log_info "  Deleting build directory for clean slate..."
             rm -rf motes/build 2>/dev/null || true
-            
-            # Pre-compile all motes with correct DEFINES before Cooja runs
-            log_info "  Building motes with BRPL_MODE=$BRPL_MODE, ATTACK_DROP_PCT=$attack_rate..."
-            cd motes
-            make -f Makefile.receiver receiver_root.cooja TARGET=cooja DEFINES="BRPL_MODE=${BRPL_MODE}" 2>&1 | grep -E "CC|LD" || true
-            make -f Makefile.sender sender.cooja TARGET=cooja DEFINES="BRPL_MODE=${BRPL_MODE},SEND_INTERVAL_SECONDS=30,WARMUP_SECONDS=120" 2>&1 | grep -E "CC|LD" || true
-            make -f Makefile.attacker attacker.cooja TARGET=cooja DEFINES="BRPL_MODE=${BRPL_MODE},ATTACK_DROP_PCT=${attack_rate},WARMUP_SECONDS=120" 2>&1 | grep -E "CC|LD" || true
-            cd "$PROJECT_DIR"
             
             # Run simulation
             LOG_DIR="$PROJECT_DIR/$RUN_DIR/logs"
