@@ -1,6 +1,9 @@
 CONTIKI_PROJECT = attacker
 all: $(CONTIKI_PROJECT)
 
+# Use project-wide config
+PROJECT_CONF_PATH = ..
+
 # BRPL objective function
 PROJECT_SOURCEFILES += ../brpl-of.c
 

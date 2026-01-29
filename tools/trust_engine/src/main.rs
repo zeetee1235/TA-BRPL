@@ -21,6 +21,8 @@ struct Config {
     bayes_min: f64,
     beta_min: f64,
     miss_threshold: u64,
+    forwarders_only: bool,
+    fwd_drop_threshold: f64,
     follow: bool,
     poll_ms: u64,
     from_start: bool,
@@ -40,6 +42,7 @@ fn usage() {
     eprintln!("Usage: trust_engine [--input <log>] [--output <trust_out>] [--metrics-out <metrics_csv>] ");
     eprintln!("                  [--metric ewma|bayes|beta] [--alpha <0..1>] [--beta-a <f>] [--beta-b <f>] ");
     eprintln!("                  [--ewma-min <n>] [--bayes-min <0..1>] [--beta-min <0..1>] [--miss-threshold <n>]");
+    eprintln!("                  [--forwarders-only] [--fwd-drop-threshold <0..1>]");
     eprintln!("                  [--follow] [--poll-ms <ms>] [--from-start] [--serial-socket <host:port>]");
 }
 
@@ -57,6 +60,8 @@ fn parse_args() -> Config {
         bayes_min: 0.3,
         beta_min: 0.3,
         miss_threshold: 5,
+        forwarders_only: false,
+        fwd_drop_threshold: 0.2,
         follow: false,
         poll_ms: 200,
         from_start: false,
@@ -102,6 +107,10 @@ fn parse_args() -> Config {
             "--miss-threshold" => {
                 if let Some(v) = args.next() { cfg.miss_threshold = v.parse().unwrap_or(cfg.miss_threshold); }
             }
+            "--forwarders-only" => cfg.forwarders_only = true,
+            "--fwd-drop-threshold" => {
+                if let Some(v) = args.next() { cfg.fwd_drop_threshold = v.parse().unwrap_or(cfg.fwd_drop_threshold); }
+            }
             "--follow" => cfg.follow = true,
             "--poll-ms" => {
                 if let Some(v) = args.next() { cfg.poll_ms = v.parse().unwrap_or(cfg.poll_ms); }
@@ -135,6 +144,7 @@ fn process_reader<R: BufRead>(
     blacklist_out: &mut File,
 ) -> io::Result<()> {
     let mut states: HashMap<u16, TrustState> = HashMap::new();
+    let mut forwarders: HashMap<u16, bool> = HashMap::new();
     loop {
         let mut line = String::new();
         let n = reader.read_line(&mut line)?;
@@ -145,6 +155,36 @@ fn process_reader<R: BufRead>(
             } else {
                 break;
             }
+        }
+        if line.starts_with("CSV,FWD,") {
+            let parts: Vec<&str> = line.trim().split(',').collect();
+            if parts.len() < 6 {
+                continue;
+            }
+            let node_id: u16 = match parts[2].parse() {
+                Ok(v) => v,
+                Err(_) => continue,
+            };
+            let udp_to_root: f64 = match parts[4].parse::<u64>() {
+                Ok(v) => v as f64,
+                Err(_) => continue,
+            };
+            let dropped: f64 = match parts[5].parse::<u64>() {
+                Ok(v) => v as f64,
+                Err(_) => continue,
+            };
+            forwarders.insert(node_id, true);
+            if udp_to_root > 0.0 {
+                let drop_ratio = dropped / udp_to_root;
+                let trust_val: u16 = if drop_ratio >= cfg.fwd_drop_threshold {
+                    0
+                } else {
+                    TRUST_SCALE as u16
+                };
+                let _ = writeln!(out, "TRUST,{},{}", node_id, trust_val);
+                let _ = out.flush();
+            }
+            continue;
         }
         if !line.starts_with("CSV,RX,") {
             continue;
@@ -157,6 +197,9 @@ fn process_reader<R: BufRead>(
             Some(v) => v,
             None => continue,
         };
+        if cfg.forwarders_only && !forwarders.contains_key(&node_id) {
+            continue;
+        }
         let seq: u32 = match parts[3].parse() {
             Ok(v) => v,
             Err(_) => continue,

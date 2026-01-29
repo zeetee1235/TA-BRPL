@@ -1,0 +1,163 @@
+#!/bin/bash
+# Quick single-scenario test for topology validation
+
+set -e
+
+PROJECT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )/.." && pwd )"
+cd "$PROJECT_DIR"
+
+# Single configuration
+TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+RESULTS_BASE="results/quick_test_$TIMESTAMP"
+mkdir -p "$RESULTS_BASE"
+
+# Test scenario: BRPL + 30% Attack + No Trust
+SCENARIO="4_brpl_attack_notrust"
+ROUTING="BRPL"
+BRPL_MODE=1  # BRPL=1, MRHOF=0
+ATTACK="ATTACK"
+TRUST=0
+ATTACK_RATE=30
+SEED=999888
+
+RUN_NAME="${SCENARIO}_p${ATTACK_RATE}_s${SEED}"
+RUN_DIR="$RESULTS_BASE/$RUN_NAME"
+mkdir -p "$RUN_DIR"
+
+echo "========================================="
+echo "토폴로지 검증 (새 TX=45m, 클러스터 배치)"
+echo "========================================="
+echo "Scenario: $SCENARIO"
+echo "Attack Rate: ${ATTACK_RATE}%"
+echo "========================================="
+
+# Environment
+export CONTIKI_NG_PATH=${CONTIKI_NG_PATH:-/home/dev/contiki-ng}
+export SERIAL_SOCKET_DISABLE=1
+export JAVA_OPTS="-Xmx4G -Xms2G"
+
+# Create temp config IN CONFIGS DIRECTORY (so ../motes path works)
+TEMP_CONFIG="configs/temp_quick_$TIMESTAMP.csc"
+SIM_TIME=600  # 600 seconds for chain topology multi-hop
+SIM_TIME_MS=$((SIM_TIME * 1000))
+TRUST_FEEDBACK_FILE="$PROJECT_DIR/$RUN_DIR/trust_feedback.txt"
+
+# Replace all placeholders like run_experiments.sh does
+sed -e "s/<randomseed>[0-9]*<\/randomseed>/<randomseed>$SEED<\/randomseed>/g" \
+    -e "s/@SIM_TIME_MS@/${SIM_TIME_MS}/g" \
+    -e "s/@SIM_TIME_SEC@/${SIM_TIME}/g" \
+    -e "s|@TRUST_FEEDBACK_PATH@|${TRUST_FEEDBACK_FILE}|g" \
+    -e "s/BRPL_MODE=[0-9]/BRPL_MODE=$BRPL_MODE/g" \
+    -e "s/ATTACK_DROP_PCT=[0-9][0-9]*/ATTACK_DROP_PCT=$ATTACK_RATE/g" \
+    "configs/simulation.csc" > "$TEMP_CONFIG"
+
+# Disable SerialSocketServer
+awk '
+  $0 ~ /<plugin>/ { in_plugin = 1; plugin_buf = $0; next }
+  in_plugin && $0 ~ /org.contikios.cooja.serialsocket.SerialSocketServer/ { skip = 1 }
+  in_plugin {
+    plugin_buf = plugin_buf "\n" $0
+    if($0 ~ /<\/plugin>/) {
+      if(!skip) { print plugin_buf }
+      in_plugin = 0; skip = 0; plugin_buf = ""
+    }
+    next
+  }
+  { print }
+' "$TEMP_CONFIG" > "${TEMP_CONFIG}.tmp" && mv "${TEMP_CONFIG}.tmp" "$TEMP_CONFIG"
+
+# Clean build
+echo "[1/3] Cleaning build..."
+rm -rf motes/build 2>/dev/null || true
+
+# Run
+echo "[2/3] Running simulation (400s, fast DIO for multi-hop)..."
+LOG_DIR="$PROJECT_DIR/$RUN_DIR/logs"
+mkdir -p "$LOG_DIR"
+
+timeout 800 java --enable-preview ${JAVA_OPTS} \
+    -jar "$CONTIKI_NG_PATH/tools/cooja/build/libs/cooja.jar" \
+    --no-gui \
+    --autostart \
+    --contiki="$CONTIKI_NG_PATH" \
+    --logdir="$LOG_DIR" \
+    "$TEMP_CONFIG" > "$PROJECT_DIR/$RUN_DIR/cooja_output.log" 2>&1
+
+COOJA_EXIT=$?
+rm -f "$TEMP_CONFIG"
+
+if [ $COOJA_EXIT -ne 0 ]; then
+    echo "❌ Simulation failed (exit: $COOJA_EXIT)"
+    tail -20 "$PROJECT_DIR/$RUN_DIR/cooja_output.log"
+    exit 1
+fi
+
+echo "[3/3] Parsing results..."
+
+# Analysis
+LOG_FILE="$LOG_DIR/COOJA.testlog"
+if [ ! -f "$LOG_FILE" ]; then
+    echo "❌ Log file not found"
+    exit 1
+fi
+
+sent=$(grep -c "CSV,TX," "$LOG_FILE" || true)
+recv=$(grep -c "CSV,RX," "$LOG_FILE" || true)
+sent=${sent:-0}
+recv=${recv:-0}
+pdr=$(echo "scale=2; if ($sent==0) 0 else $recv * 100 / $sent" | bc 2>/dev/null || echo "0")
+
+echo ""
+echo "========================================="
+echo "Results:"
+echo "  Sent: $sent, Received: $recv"
+echo "  PDR: ${pdr}%"
+echo "========================================="
+
+echo ""
+echo "Parent Relationships:"
+grep "CSV,PARENT" "$LOG_FILE" | sort -u | while read line; do
+    node=$(echo "$line" | cut -d, -f3)
+    parent=$(echo "$line" | cut -d, -f4)
+    
+    parent_name=$parent
+    [ "$parent" == "fe80::201:1:1:1" ] && parent_name="Root"
+    [ "$parent" == "fe80::202:2:2:2" ] && parent_name="Attacker"
+    
+    node_name="Node$node"
+    [ "$node" == "2" ] && node_name="Attacker"
+    [ "$node" -ge 3 ] && node_name="Sender$node"
+    
+    printf "  %-12s → %s\n" "$node_name" "$parent_name"
+done
+
+echo ""
+echo "========================================="
+echo "Validation:"
+
+# Check multi-hop routing
+attacker_parent_count=$(awk -F',' '$1=="CSV" && $2=="PARENT" && $3>=4 && $3<=8 && $4=="fe80::203:3:3:3"{c++} END{print c+0}' "$LOG_FILE")
+if [ "$attacker_parent_count" -ge 3 ]; then
+    echo "✅ Multi-hop routing confirmed (${attacker_parent_count}/5 senders via Attacker)"
+else
+    echo "❌ Multi-hop failed (only $attacker_parent_count senders via Attacker)"
+fi
+
+# Check attacker forwarding
+fwd_lines=$(grep "CSV,FWD,3," "$LOG_FILE" | tail -1)
+if [ -n "$fwd_lines" ]; then
+    tx_ok=$(echo "$fwd_lines" | cut -d, -f5)
+    echo "✅ Attacker forwarding packets (TX_OK=$tx_ok)"
+else
+    echo "❌ Attacker not forwarding"
+fi
+
+# Check attack effect
+if [ "$(printf '%.0f' "$pdr")" -lt "80" ]; then
+    echo "✅ Attack effective (PDR < 80%)"
+else
+    echo "⚠️  Attack may be weak (PDR = ${pdr}%)"
+fi
+
+echo "========================================="
+echo "Full log: $LOG_FILE"

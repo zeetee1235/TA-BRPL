@@ -13,6 +13,16 @@ extern rpl_of_t rpl_brpl;
 #define RPL_CONF_WITH_DAO_ACK 0
 #endif
 
+/* Force RPL-Lite routing (avoid null/none routing defaults). */
+#ifndef NETSTACK_CONF_ROUTING
+#define NETSTACK_CONF_ROUTING rpl_lite
+#endif
+
+/* Enable IPv6 forwarding on non-root nodes (required for manual routes). */
+#ifndef UIP_CONF_ROUTER
+#define UIP_CONF_ROUTER 1
+#endif
+
 #ifndef SEND_INTERVAL_SECONDS
 #define SEND_INTERVAL_SECONDS 10
 #endif
@@ -20,6 +30,12 @@ extern rpl_of_t rpl_brpl;
 #ifndef WARMUP_SECONDS
 #define WARMUP_SECONDS 60
 #endif
+
+/* RPL Fast Network Formation for Multi-hop Topology */
+/* Reduce DIO interval for faster convergence in multi-hop scenarios */
+#define RPL_CONF_DIO_INTERVAL_MIN 8    /* Default: 12 (4.096s) -> 8 (256ms) */
+#define RPL_CONF_DIO_INTERVAL_DOUBLINGS 12  /* Max interval ~1000s */
+#define RPL_CONF_DIO_REDUNDANCY 10     /* Suppress threshold */
 
 /* Trust (EWMA) parameters */
 #ifndef TRUST_MAX_NODES

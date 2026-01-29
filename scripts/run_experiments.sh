@@ -8,16 +8,27 @@ PROJECT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )/.." && pwd )"
 cd "$PROJECT_DIR"
 
 # Configuration
-SIM_TIME=300  # 5 minutes per simulation
-ATTACK_RATES=(30 50 70)  # Drop percentages (only for attack scenarios)
-SEEDS=(123456 234567 345678 456789 567890)  # 5 seeds for statistical stability
+QUICK_PREVIEW=1  # set to 0 for full run
+SIM_TIME=600  # default: 10 minutes per simulation
+ATTACK_RATES=(0 30 50 70)  # Drop percentages (0 for normal scenarios)
+SEEDS=(123456 234567 345678 456789 567890)  # default: 5 seeds
+INCLUDE_OPTIONAL_SCENARIOS=0  # set to 1 to include 7/8 (Trust ON, no attack)
+SEND_INTERVAL_SECONDS=30
+WARMUP_SECONDS=120
+
+if [ "$QUICK_PREVIEW" -eq 1 ]; then
+    SIM_TIME=240
+    SEEDS=(123456)
+    SEND_INTERVAL_SECONDS=10
+    WARMUP_SECONDS=10
+fi
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 RESULTS_BASE="results/experiments-$TIMESTAMP"
 
 mkdir -p "$RESULTS_BASE"
 
 # Scenarios definition: routing,has_attack,trust_enabled
-# 6 ESSENTIAL scenarios only
+# 6 ESSENTIAL scenarios only (add optional 7/8 via flag)
 declare -A SCENARIOS=(
     ["1_mrhof_normal_notrust"]="MRHOF,NO_ATTACK,0"
     ["2_brpl_normal_notrust"]="BRPL,NO_ATTACK,0"
@@ -26,6 +37,11 @@ declare -A SCENARIOS=(
     ["5_mrhof_attack_trust"]="MRHOF,ATTACK,1"
     ["6_brpl_attack_trust"]="BRPL,ATTACK,1"
 )
+
+if [ "$INCLUDE_OPTIONAL_SCENARIOS" -eq 1 ]; then
+    SCENARIOS["7_mrhof_normal_trust"]="MRHOF,NO_ATTACK,1"
+    SCENARIOS["8_brpl_normal_trust"]="BRPL,NO_ATTACK,1"
+fi
 
 # Color output
 RED='\033[0;31m'
@@ -50,8 +66,26 @@ log_error() {
 SUMMARY_FILE="$RESULTS_BASE/experiment_summary.csv"
 echo "scenario,routing,attack_rate,trust,seed,pdr,avg_delay_ms,tx,rx,lost" > "$SUMMARY_FILE"
 
-# Progress tracking
-TOTAL_RUNS=$((${#SCENARIOS[@]} * ${#ATTACK_RATES[@]} * ${#SEEDS[@]}))
+# Progress tracking (account for skipped combos)
+count_runs() {
+    local total=0
+    local scenario_name routing attack trust
+    for scenario_name in "${!SCENARIOS[@]}"; do
+        IFS=',' read -r routing attack trust <<< "${SCENARIOS[$scenario_name]}"
+        for attack_rate in "${ATTACK_RATES[@]}"; do
+            if [ "$attack" == "ATTACK" ] && [ "$attack_rate" -eq 0 ]; then
+                continue
+            fi
+            if [ "$attack" == "NO_ATTACK" ] && [ "$attack_rate" -gt 0 ]; then
+                continue
+            fi
+            total=$((total + ${#SEEDS[@]}))
+        done
+    done
+    echo "$total"
+}
+
+TOTAL_RUNS=$(count_runs)
 CURRENT_RUN=0
 
 log_info "============================================"
@@ -67,8 +101,14 @@ log_info ""
 # Build if needed
 if [ ! -f "motes/build/cooja/receiver_root.cooja" ]; then
     log_info "Building motes..."
-    source scripts/setup_env.sh
-    ./scripts/build.sh
+    if [ -f "scripts/setup_env.sh" ]; then
+        source scripts/setup_env.sh
+    fi
+    if [ -f "scripts/build.sh" ]; then
+        ./scripts/build.sh
+    else
+        log_warn "scripts/build.sh not found; relying on on-demand builds in Cooja."
+    fi
 fi
 
 # Build trust_engine if needed
@@ -137,7 +177,10 @@ for scenario_name in $(echo "${!SCENARIOS[@]}" | tr ' ' '\n' | sort); do
                 -e "s/@SIM_TIME_SEC@/${SIM_TIME}/g" \
                 -e "s|@TRUST_FEEDBACK_PATH@|${TRUST_FEEDBACK_FILE}|g" \
                 -e "s/BRPL_MODE=[0-9]/BRPL_MODE=${BRPL_MODE}/g" \
+                -e "s/TRUST_ENABLED=[0-9]/TRUST_ENABLED=${trust}/g" \
                 -e "s/ATTACK_DROP_PCT=[0-9][0-9]*/ATTACK_DROP_PCT=${attack_rate}/g" \
+                -e "s/SEND_INTERVAL_SECONDS=[0-9][0-9]*/SEND_INTERVAL_SECONDS=${SEND_INTERVAL_SECONDS}/g" \
+                -e "s/WARMUP_SECONDS=[0-9][0-9]*/WARMUP_SECONDS=${WARMUP_SECONDS}/g" \
                 "$PROJECT_DIR/$BASE_CONFIG" > "$TEMP_CONFIG"
 
             # Disable SerialSocketServer for headless runs (sandbox/network restrictions)
@@ -178,12 +221,14 @@ for scenario_name in $(echo "${!SCENARIOS[@]}" | tr ' ' '\n' | sort); do
                     --alpha 0.2 \
                     --ewma-min 700 \
                     --miss-threshold 5 \
+                    --forwarders-only \
+                    --fwd-drop-threshold 0.2 \
                     --follow > "$PROJECT_DIR/$RUN_DIR/trust_engine.log" 2>&1 &
                 TRUST_ENGINE_PID=$!
                 sleep 2
             fi
             
-            timeout 400 java --enable-preview ${JAVA_OPTS} \
+            timeout 800 java --enable-preview ${JAVA_OPTS} \
                 -jar "$CONTIKI_NG_PATH/tools/cooja/build/libs/cooja.jar" \
                 --no-gui \
                 --autostart \

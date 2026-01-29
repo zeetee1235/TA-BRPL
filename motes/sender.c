@@ -11,6 +11,7 @@
 #include "net/ipv6/uip.h"
 #include "net/ipv6/uiplib.h"
 #include "net/ipv6/uip-ds6-route.h"
+#include "net/nbr-table.h"
 #include "net/routing/routing.h"
 #include "net/routing/rpl-lite/rpl.h"
 #include "net/routing/rpl-lite/rpl-icmp6.h"
@@ -34,10 +35,39 @@
 #ifndef WARMUP_SECONDS
 #define WARMUP_SECONDS 60
 #endif
+#ifndef TRUST_SCALE
+#define TRUST_SCALE 1000
+#endif
 #define SEND_INTERVAL (SEND_INTERVAL_SECONDS * CLOCK_SECOND)
 
 static struct simple_udp_connection udp_conn;
 static uip_ipaddr_t root_ipaddr;
+static uip_ipaddr_t forwarder_ipaddr;
+
+#define ATTACKER_NODE_ID 3
+#define RELAY_NODE_ID 2
+#define TRUST_SWITCH_THRESHOLD 700
+
+static uint16_t trust_attacker = TRUST_SCALE;
+static uint16_t trust_relay = TRUST_SCALE;
+
+static void
+set_forwarder(uint16_t node_id)
+{
+  uip_lladdr_t lladdr;
+  uip_ipaddr_t lladdr_ip;
+  memset(&lladdr, 0, sizeof(lladdr));
+  for(uint8_t i = 0; i < UIP_LLADDR_LEN; i++) {
+    lladdr.addr[i] = (i % 2 == 0) ? 0x00 : (uint8_t)node_id;
+  }
+
+  uip_ip6addr(&lladdr_ip, 0xfe80, 0, 0, 0, 0, 0, 0, 0);
+  uip_ds6_set_addr_iid(&lladdr_ip, &lladdr);
+  uip_ds6_nbr_add(&lladdr_ip, &lladdr, 1, NBR_REACHABLE, NBR_TABLE_REASON_ROUTE, NULL);
+
+  uip_ipaddr_copy(&forwarder_ipaddr, &lladdr_ip);
+  printf("CSV,FORWARDER,%u\n", (unsigned)node_id);
+}
 
 static void
 log_preferred_parent(void)
@@ -128,6 +158,21 @@ handle_trust_input(const char *line)
       /* Remove from blacklist if trust recovers */
       brpl_blacklist_remove((uint16_t)node_id);
     }
+
+    if(node_id == ATTACKER_NODE_ID) {
+      trust_attacker = trust;
+      if(trust_attacker < TRUST_SWITCH_THRESHOLD) {
+        set_forwarder(RELAY_NODE_ID);
+      } else {
+        set_forwarder(ATTACKER_NODE_ID);
+      }
+    }
+    if(node_id == RELAY_NODE_ID) {
+      trust_relay = trust;
+      if(trust_attacker < TRUST_SWITCH_THRESHOLD && trust_relay >= TRUST_SWITCH_THRESHOLD) {
+        set_forwarder(RELAY_NODE_ID);
+      }
+    }
   }
 }
 
@@ -174,6 +219,24 @@ PROCESS_THREAD(sender_process, ev, data)
   if(warmup_done) {
     LOG_INFO("warmup complete, start sending\n");
   }
+
+  LOG_INFO("routing driver: %s\n", NETSTACK_ROUTING.name);
+  {
+    unsigned node_id = (unsigned)linkaddr_node_addr.u8[LINKADDR_SIZE - 1];
+    printf("CSV,LLADDR,%u,", node_id);
+    for(uint8_t i = 0; i < LINKADDR_SIZE; i++) {
+      printf("%02x", linkaddr_node_addr.u8[i]);
+      if(i + 1 < LINKADDR_SIZE) {
+        printf(":");
+      }
+    }
+    printf("\n");
+  }
+#if TRUST_ENABLED
+  set_forwarder(RELAY_NODE_ID);
+#else
+  set_forwarder(ATTACKER_NODE_ID);
+#endif
 
   while(1) {
     PROCESS_WAIT_EVENT();
@@ -228,7 +291,7 @@ PROCESS_THREAD(sender_process, ev, data)
     seq++;
     snprintf(buf, sizeof(buf), "seq=%lu t0=%lu",
              (unsigned long)seq, (unsigned long)t0);
-    simple_udp_sendto(&udp_conn, buf, strlen(buf), &root_ipaddr);
+    simple_udp_sendto(&udp_conn, buf, strlen(buf), &forwarder_ipaddr);
     LOG_INFO("TX id=%u seq=%lu t0=%lu joined=%u\n",
              (unsigned)linkaddr_node_addr.u8[LINKADDR_SIZE - 1],
              (unsigned long)seq,

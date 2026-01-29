@@ -12,14 +12,19 @@
 #include "net/ipv6/uipbuf.h"
 #include "net/ipv6/uip-ds6.h"
 #include "net/ipv6/uiplib.h"
+#include "net/ipv6/simple-udp.h"
 #include "net/linkaddr.h"
 #include "random.h"
 #include "net/routing/routing.h"
 #include "net/routing/rpl-lite/rpl.h"
 #include "net/routing/rpl-lite/rpl-icmp6.h"
 #include "dev/serial-line.h"
+#include "net/ipv6/uip-ds6-route.h"
+#include "net/nbr-table.h"
 
 #include <stdint.h>
+#include <stdio.h>
+#include <string.h>
 
 #include "brpl-trust.h"
 #include "brpl-blacklist.h"
@@ -41,11 +46,39 @@
 #define ATTACK_WARMUP_SECONDS WARMUP_SECONDS
 #endif
 
+static uint8_t effective_drop_pct;
+
 static uip_ipaddr_t root_ipaddr;
 static uint8_t attack_enabled;
 static uint32_t fwd_total;
 static uint32_t fwd_udp_root;
 static uint32_t fwd_udp_root_dropped;
+static uip_ds6_defrt_t *defrt;
+static uint32_t last_seq[256];
+
+#define ROOT_NODE_ID 1
+#define RELAY_NODE_ID 2
+
+static void
+set_default_router(uint16_t node_id)
+{
+  uip_lladdr_t lladdr;
+  uip_ipaddr_t lladdr_ip;
+  memset(&lladdr, 0, sizeof(lladdr));
+  for(uint8_t i = 0; i < UIP_LLADDR_LEN; i++) {
+    lladdr.addr[i] = (i % 2 == 0) ? 0x00 : (uint8_t)node_id;
+  }
+
+  uip_ip6addr(&lladdr_ip, 0xfe80, 0, 0, 0, 0, 0, 0, 0);
+  uip_ds6_set_addr_iid(&lladdr_ip, &lladdr);
+  uip_ds6_nbr_add(&lladdr_ip, &lladdr, 1, NBR_REACHABLE, NBR_TABLE_REASON_ROUTE, NULL);
+
+  if(defrt != NULL) {
+    uip_ds6_defrt_rm(defrt);
+  }
+  defrt = uip_ds6_defrt_add(&lladdr_ip, 0);
+  printf("CSV,ROUTE_SWITCH,%u\n", (unsigned)node_id);
+}
 
 static void
 log_preferred_parent(void)
@@ -69,13 +102,13 @@ log_preferred_parent(void)
 static uint8_t
 should_attack_drop(void)
 {
-  if(ATTACK_DROP_PCT == 0) {
+  if(effective_drop_pct == 0) {
     return 0;
   }
-  if(ATTACK_DROP_PCT >= 100) {
+  if(effective_drop_pct >= 100) {
     return 1;
   }
-  return (random_rand() % 100) < ATTACK_DROP_PCT;
+  return (random_rand() % 100) < effective_drop_pct;
 }
 
 static uint8_t
@@ -118,6 +151,62 @@ handle_trust_input(const char *line)
       brpl_blacklist_remove((uint16_t)node_id);
     }
   }
+}
+
+static int
+parse_payload(const uint8_t *data, uint16_t len, uint32_t *seq_out)
+{
+  char buf[64];
+  if(len >= sizeof(buf)) len = sizeof(buf) - 1;
+  memcpy(buf, data, len);
+  buf[len] = '\0';
+
+  unsigned long seq = 0;
+  unsigned long t0 = 0;
+  int matched = sscanf(buf, "seq=%lu t0=%lu", &seq, &t0);
+  if(matched == 2) {
+    *seq_out = (uint32_t)seq;
+    return 1;
+  }
+  return 0;
+}
+
+static struct simple_udp_connection udp_conn;
+
+static void
+udp_rx_callback(struct simple_udp_connection *c,
+                const uip_ipaddr_t *sender_addr,
+                uint16_t sender_port,
+                const uip_ipaddr_t *receiver_addr,
+                uint16_t receiver_port,
+                const uint8_t *data,
+                uint16_t datalen)
+{
+  (void)c; (void)sender_addr; (void)sender_port;
+  (void)receiver_addr; (void)receiver_port;
+
+  fwd_total++;
+  fwd_udp_root++;
+
+  uint32_t seq = 0;
+  uint16_t sender_id = uip_ntohs(sender_addr->u16[7]);
+  if(parse_payload(data, datalen, &seq)) {
+    if(seq <= last_seq[sender_id]) {
+      return;
+    }
+    last_seq[sender_id] = seq;
+  }
+
+  if(attack_enabled && should_attack_drop()) {
+    fwd_udp_root_dropped++;
+    LOG_WARN("drop fwd UDP to root\n");
+    return;
+  }
+
+  /* Echo back to sender to enable RTT logging (proxy delay). */
+  simple_udp_sendto(&udp_conn, data, datalen, sender_addr);
+
+  simple_udp_sendto(&udp_conn, data, datalen, &root_ipaddr);
 }
 
 static enum netstack_ip_action
@@ -185,6 +274,33 @@ PROCESS_THREAD(attacker_process, ev, data)
   rpl_set_leaf_only(0);
   serial_line_init();
   brpl_blacklist_init();
+  
+  /* Explicit attacker identification */
+  {
+    unsigned node_id = (unsigned)linkaddr_node_addr.u8[LINKADDR_SIZE - 1];
+    effective_drop_pct = ATTACK_DROP_PCT;
+    if(node_id == RELAY_NODE_ID) {
+      effective_drop_pct = 0;
+    }
+  }
+  LOG_INFO("=== ATTACKER NODE INITIALIZED === (Node ID: %u)\n", 
+           (unsigned)linkaddr_node_addr.u8[LINKADDR_SIZE - 1]);
+  LOG_INFO("attack will start after %u second warmup\n", ATTACK_WARMUP_SECONDS);
+  LOG_INFO("routing driver: %s\n", NETSTACK_ROUTING.name);
+  {
+    unsigned node_id = (unsigned)linkaddr_node_addr.u8[LINKADDR_SIZE - 1];
+    printf("CSV,LLADDR,%u,", node_id);
+    for(uint8_t i = 0; i < LINKADDR_SIZE; i++) {
+      printf("%02x", linkaddr_node_addr.u8[i]);
+      if(i + 1 < LINKADDR_SIZE) {
+        printf(":");
+      }
+    }
+    printf("\n");
+  }
+  simple_udp_register(&udp_conn, UDP_PORT, NULL, UDP_PORT, udp_rx_callback);
+  defrt = NULL;
+  set_default_router(ROOT_NODE_ID);
 
   etimer_set(&dis_timer, 30 * CLOCK_SECOND);
   etimer_set(&parent_timer, 30 * CLOCK_SECOND);
@@ -221,7 +337,9 @@ PROCESS_THREAD(attacker_process, ev, data)
       etimer_reset(&parent_timer);
     }
     if(etimer_expired(&stats_timer)) {
-      printf("CSV,FWD,3,%lu,%lu,%lu\n",
+      unsigned node_id = (unsigned)linkaddr_node_addr.u8[LINKADDR_SIZE - 1];
+      printf("CSV,FWD,%u,%lu,%lu,%lu\n",
+             node_id,
              (unsigned long)fwd_total,
              (unsigned long)fwd_udp_root,
              (unsigned long)fwd_udp_root_dropped);

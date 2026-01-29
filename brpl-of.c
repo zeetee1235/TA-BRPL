@@ -38,6 +38,7 @@
 struct trust_entry {
   uint16_t trust;
   uint8_t seen;
+  uint8_t override_valid;
 };
 
 static struct trust_entry trust_table[TRUST_MAX_NODES];
@@ -64,6 +65,7 @@ brpl_trust_override(uint16_t node_id, uint16_t trust)
   e = &trust_table[node_id];
   e->seen = 1;
   e->trust = trust;
+  e->override_valid = 1;
   printf("CSV,TRUST_OVR,%u,%u\n", (unsigned)node_id, (unsigned)trust);
 }
 /*---------------------------------------------------------------------------*/
@@ -73,10 +75,15 @@ nbr_link_metric(rpl_nbr_t *nbr)
   const struct link_stats *stats = rpl_neighbor_get_link_stats(nbr);
   if(stats == NULL) {
     LOG_WARN("link stats missing for neighbor %p\n", (void *)nbr);
-    return 0xffff;
+    return LINK_STATS_ETX_DIVISOR;
   }
   if(stats->etx == 0) {
     LOG_WARN("link stats etx=0 for neighbor %p\n", (void *)nbr);
+    return LINK_STATS_ETX_DIVISOR;
+  }
+  if(stats->etx == 0xffff) {
+    LOG_WARN("link stats etx=0xffff for neighbor %p\n", (void *)nbr);
+    return LINK_STATS_ETX_DIVISOR;
   }
   return stats->etx;
 }
@@ -97,33 +104,12 @@ queue_penalty(void)
 }
 /*---------------------------------------------------------------------------*/
 static uint16_t
-trust_sample_from_etx(uint16_t etx)
-{
-  uint32_t sample;
-
-  if(etx == 0) {
-    return TRUST_SCALE;
-  }
-  if(etx == 0xffff) {
-    return 0;
-  }
-
-  sample = ((uint32_t)TRUST_SCALE * (uint32_t)LINK_STATS_ETX_DIVISOR) / etx;
-  if(sample > TRUST_SCALE) {
-    sample = TRUST_SCALE;
-  }
-  return (uint16_t)sample;
-}
-/*---------------------------------------------------------------------------*/
-static uint16_t
 trust_update_from_nbr(rpl_nbr_t *nbr)
 {
   const struct link_stats *stats;
   const linkaddr_t *lladdr;
   struct trust_entry *e;
   uint16_t node_id;
-  uint16_t sample;
-  uint32_t updated;
 
   stats = rpl_neighbor_get_link_stats(nbr);
   if(stats == NULL) {
@@ -140,21 +126,11 @@ trust_update_from_nbr(rpl_nbr_t *nbr)
   }
 
   e = &trust_table[node_id];
-  sample = trust_sample_from_etx(stats->etx);
-
-  if(!e->seen) {
-    e->seen = 1;
-    e->trust = sample;
-    printf("CSV,TRUST_OF,%u,%u\n", (unsigned)node_id, (unsigned)e->trust);
+  if(e->override_valid) {
     return e->trust;
   }
-
-  updated = (uint32_t)TRUST_ALPHA_NUM * sample +
-            (uint32_t)(TRUST_ALPHA_DEN - TRUST_ALPHA_NUM) * e->trust;
-  updated = (updated + (TRUST_ALPHA_DEN / 2)) / TRUST_ALPHA_DEN;
-  e->trust = (uint16_t)updated;
-  printf("CSV,TRUST_OF,%u,%u\n", (unsigned)node_id, (unsigned)e->trust);
-  return e->trust;
+  /* No external trust yet: do not block parent selection. */
+  return TRUST_SCALE;
 }
 /*---------------------------------------------------------------------------*/
 static uint16_t
@@ -208,6 +184,9 @@ static int
 nbr_has_usable_link(rpl_nbr_t *nbr)
 {
   uint16_t link_metric = nbr_link_metric(nbr);
+  if(link_metric == 0xffff) {
+    return 1;
+  }
   return link_metric <= 4096;
 }
 /*---------------------------------------------------------------------------*/

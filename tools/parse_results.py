@@ -31,7 +31,7 @@ def parse_cooja_log(filename):
                 
                 # CSV 라인 파싱
                 if 'CSV,RX,' in line:
-                    # CSV,RX,<src_ip>,<seq>,<t_recv>,<len>
+                    # CSV,RX,<src_ip>,<seq>,<t_recv>,<t0>,<len> (t0 optional)
                     parts = line.split('CSV,RX,')[1].split(',')
                     if len(parts) >= 2:
                         seq = int(parts[1])
@@ -45,6 +45,8 @@ def parse_cooja_log(filename):
                                 inferred_sender_id = node_id
                         except ValueError:
                             pass
+                    # Do not compute delay from RX timestamps (different mote clocks).
+                    pass
                 
                 elif 'CSV,RTT,' in line:
                     # CSV,RTT,<seq>,<t0>,<t_ack>,<rtt_ticks>,<len>
@@ -54,6 +56,15 @@ def parse_cooja_log(filename):
                         rtt_ticks = int(parts[3])
                         # Cooja clock: 1 tick = 1ms (일반적)
                         delay_ms = rtt_ticks / 2.0  # RTT의 절반이 one-way delay
+                        delays.append((seq, delay_ms))
+                
+                elif 'CSV,DELAY,' in line:
+                    # Legacy delay line (kept for compatibility)
+                    parts = line.split('CSV,DELAY,')[1].split(',')
+                    if len(parts) >= 2:
+                        seq = int(parts[0])
+                        delay_ticks = int(parts[1])
+                        delay_ms = delay_ticks  # 1 tick ~= 1ms in Cooja
                         delays.append((seq, delay_ms))
                 
                 # TX 로그 추출 (sender.c에서 출력)

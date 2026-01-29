@@ -53,6 +53,7 @@ set_root_address_and_prefix(void)
 
   /* Prefix: aaaa::/64 */
   uip_ip6addr(&prefix, 0xaaaa,0,0,0,0,0,0,0);
+  NETSTACK_ROUTING.root_set_prefix(&prefix, &root_ipaddr);
   uip_ds6_prefix_add(&prefix, 64,
                      1, /* advertise */
                      UIP_ND6_RA_FLAG_ONLINK | UIP_ND6_RA_FLAG_AUTONOMOUS,
@@ -141,9 +142,10 @@ udp_rx_callback(struct simple_udp_connection *c,
     /* Trust calculation delegated to external trust_engine */
     printf("CSV,RX,");
     uiplib_ipaddr_print(&reply_addr);
-    printf(",%lu,%lu,%u\n",
+    printf(",%lu,%lu,%lu,%u\n",
            (unsigned long)seq,
            (unsigned long)t_recv,
+           (unsigned long)t0,
            (unsigned)datalen);
 
     snprintf(buf, sizeof(buf), "seq=%lu t0=%lu",
