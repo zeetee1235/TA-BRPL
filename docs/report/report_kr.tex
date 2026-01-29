@@ -34,7 +34,7 @@
 \maketitle
 
 \begin{abstract}
-무선 센서 네트워크(WSN) 및 사물인터넷(IoT) 환경에서 RPL 기반 라우팅은 내부자 공격(예: 선택적 포워딩)으로 인해 성능 저하가 발생할 수 있습니다. 본 과제에서는 BRPL(Backpressure RPL)에 신뢰도(trust) 개념을 단순한 형태로 결합한 프로토타입을 구현하고, Cooja(Contiki-NG) 시뮬레이션에서 선택적 포워딩 공격 상황을 대상으로 예비 성능을 관찰했습니다. 기준선으로 MRHOF를 사용했으며, 패킷 전달률(PDR), 지연, 제어 오버헤드 및 신뢰도 진화(임계값 하락 시점)를 관측했습니다. 결과는 통제된 토폴로지와 무선 환경에서 신뢰도 기반 부모 필터링이 공격 영향 완화 가능성이 있음을 시사하나, 현재 결과는 단일 시드 예비 실험이므로 정량 결론은 추가 반복 실험 후 확정할 필요가 있습니다.
+무선 센서 네트워크(WSN) 및 사물인터넷(IoT) 환경에서 RPL 기반 라우팅은 내부자 공격(예: 선택적 포워딩)으로 인해 성능 저하가 발생할 수 있습니다. 본 과제에서는 BRPL(Backpressure RPL)에 신뢰도(trust) 개념을 단순한 형태로 결합한 프로토타입을 구현하고, Cooja(Contiki-NG) 시뮬레이션에서 선택적 포워딩 공격 상황을 대상으로 예비 성능을 관찰했습니다. 기준선으로 MRHOF를 사용했으며, 패킷 전달률(PDR), 지연, 제어 오버헤드 및 신뢰도 진화(임계값 하락 시점)를 관측했습니다. 결과는 통제된 토폴로지와 무선 환경에서 신뢰도 기반 부모 필터링이 공격 영향 완화에 기여할 가능성이 있음을 시사하나, 현재 결과는 단일 시드 예비 실험이므로 정량 결론은 추가 반복 실험 후 확정할 필요가 있습니다.
 \end{abstract}
 
 \tableofcontents
@@ -52,12 +52,12 @@ MRHOF(Minimum Rank with Hysteresis Objective Function)\cite{mrhof}와 같은 기
 
 \subsection{연구 목표}
 
-본 연구는 다음을 목표로 합니다:
+본 과제는 다음을 목표로 합니다:
 \begin{itemize}
-    \item 신뢰도 메트릭을 라우팅 결정에 통합하는 BRPL의 신뢰도 기반 확장 설계 및 구현
-    \item 선택적 포워딩 공격에 대한 신뢰도 기반 방어의 효과성 평가
-    \item 보안(PDR 개선)과 오버헤드(지연, 제어 메시지) 간의 트레이드오프 분석
-    \item 다양한 공격 강도에서 신뢰도 기반 BRPL과 표준 MRHOF 비교
+    \item 신뢰도 메트릭을 라우팅 결정에 통합하는 BRPL 계열 라우팅 확장 설계 및 구현
+    \item 선택적 포워딩 공격에 대한 신뢰도 기반 방어의 동작 및 경향 예비 관찰
+    \item 보안(PDR 변화)과 오버헤드(지연, 제어 메시지) 간 변화 양상 정리
+    \item 다양한 공격 강도에서 신뢰도 기반 BRPL과 표준 MRHOF의 비교 관찰
 \end{itemize}
 
 \subsection{과제 산출물 및 범위}
@@ -102,12 +102,12 @@ MRHOF(Minimum Rank with Hysteresis Objective Function)\cite{mrhof}와 같은 기
     \node[below=0.1cm of attacker] {\small Node 3};
     
     % Sender nodes (clustered)
-    \node[circle, draw, fill=blue!20, minimum size=0.8cm] (s3) at (7.5,1.5) {S1};
-    \node[circle, draw, fill=blue!20, minimum size=0.8cm] (s4) at (8.5,0.5) {S2};
-    \node[circle, draw, fill=blue!20, minimum size=0.8cm] (s5) at (8.5,-0.5) {S3};
-    \node[circle, draw, fill=blue!20, minimum size=0.8cm] (s6) at (7.5,-1.5) {S4};
-    \node[circle, draw, fill=blue!20, minimum size=0.8cm] (s7) at (9.5,1) {S5};
-    \node[circle, draw, fill=blue!20, minimum size=0.8cm] (s8) at (9.5,-1) {S6};
+    \node[circle, draw, fill=cyan!20, minimum size=0.8cm] (s3) at (7.5,1.5) {S1};
+    \node[circle, draw, fill=cyan!20, minimum size=0.8cm] (s4) at (8.5,0.5) {S2};
+    \node[circle, draw, fill=cyan!20, minimum size=0.8cm] (s5) at (8.5,-0.5) {S3};
+    \node[circle, draw, fill=cyan!20, minimum size=0.8cm] (s6) at (7.5,-1.5) {S4};
+    \node[circle, draw, fill=cyan!20, minimum size=0.8cm] (s7) at (9.5,1) {S5};
+    \node[circle, draw, fill=cyan!20, minimum size=0.8cm] (s8) at (9.5,-1) {S6};
     
     % Connections
     \draw[thick, ->] (relay) -- (root) node[midway, above] {\small 30m};
@@ -129,7 +129,7 @@ MRHOF(Minimum Rank with Hysteresis Objective Function)\cite{mrhof}와 같은 기
         \tikz\node[circle,draw,fill=green!20,minimum size=0.4cm] {}; 루트 (DODAG) \\
         \tikz\node[circle,draw,fill=blue!20,minimum size=0.4cm] {}; 중계 노드 \\
         \tikz\node[circle,draw,fill=red!30,minimum size=0.4cm] {}; 공격자 (선택적 포워딩) \\
-        \tikz\node[circle,draw,fill=blue!20,minimum size=0.4cm] {}; 송신자 (트래픽 소스) \\
+        \tikz\node[circle,draw,fill=cyan!20,minimum size=0.4cm] {}; 송신자 (트래픽 소스) \\
         \tikz\draw[thick,->] (0,0) -- (0.3,0); 라우팅 경로 \\
         \tikz\draw[thick,->,dashed] (0,0) -- (0.3,0); 멀티홉 경로
     };
@@ -138,8 +138,7 @@ MRHOF(Minimum Rank with Hysteresis Objective Function)\cite{mrhof}와 같은 기
 \label{fig:topology}
 \end{figure}
 
-토폴로지 설계에서 공격자 노드가 실제 포워딩 경로에 포함되는 것은 선택적 포워딩 실험의 타당성에 필수적입니다. 본 과제에서는 TX 범위와 노드 배치를 통해 송신자 노드들이 공격자 노드를 경유하도록 구성했으며, 중계 노드(Node 2)를 통해 루트까지 경로가 형성되도록 설계했습니다. 시뮬레이션 로그(예: preferred parent 변화 로그)로 공격자 노드가 중간 라우터로 선택되는 정황을 점검했습니다.
-이는 결과적으로 ``송신자 클러스터 $\rightarrow$ 공격자 $\rightarrow$ 중계 $\rightarrow$ 루트''의 3-hop 경로가 기본 경로가 되도록 만든 구조이며, 선택적 포워딩의 영향이 명확히 나타나도록 한 설정이다.
+토폴로지 설계에서 공격자 노드가 실제 포워딩 경로에 포함되는 것은 선택적 포워딩 실험의 타당성에 필수적입니다. 본 과제에서는 TX 범위와 노드 배치를 통해 송신자 노드들이 공격자 노드를 경유하도록 구성했으며, 중계 노드(Node 2)를 통해 루트까지 경로가 형성되도록 설계했습니다. 시뮬레이션 로그(예: preferred parent 변화 로그)로 공격자 노드가 중간 라우터로 선택되는 정황을 점검했습니다. 이는 결과적으로 ``송신자 클러스터 $\rightarrow$ 공격자 $\rightarrow$ 중계 $\rightarrow$ 루트''의 3-hop 경로가 기본 경로가 되도록 만든 구조이며, 선택적 포워딩의 영향이 비교적 명확히 나타나도록 한 설정입니다.
 
 \subsubsection{무선 모델}
 
@@ -154,7 +153,7 @@ Cooja에서 다음 파라미터를 가진 UDGM(Unit Disk Graph Medium) 무선 �
 
 \subsubsection{선택적 포워딩 공격}
 
-공격자 노드(Node 2)는 확률적 선택적 포워딩 공격을 구현합니다:
+공격자 노드(Node 3)는 확률적 선택적 포워딩 공격을 구현합니다:
 
 \begin{algorithm}[H]
 \caption{선택적 포워딩 공격}
@@ -191,7 +190,7 @@ Backpressure RPL\cite{brpl}은 큐 백로그를 라우팅 결정에 통합하여
 
 여기서 $\lambda$는 링크 품질과 혼잡을 균형 잡는 페널티 계수입니다.
 
-본 과제에서는 BRPL의 핵심 아이디어(큐/혼잡 정보 반영)를 참고하되, 구현 복잡도를 낮추기 위해 비용 함수를 단순화하여 적용했습니다. 따라서 본 실험의 초점은 ``BRPL 원형의 완전 재현''보다는 ``신뢰도 기반 필터링을 BRPL 계열 라우팅에 결합했을 때의 경향''을 예비적으로 관찰하는 데 있습니다.
+본 과제에서는 BRPL의 핵심 아이디어(큐/혼잡 정보 반영)를 참고하되, 구현 복잡도를 낮추기 위해 비용 함수를 단순화하여 적용했습니다. 따라서 본 실험의 초점은 ``BRPL 원형의 완전 재현''보다는 ``신뢰도 기반 필터링을 BRPL 계열 라우팅에 결합했을 때의 동작 경향''을 예비적으로 관찰하는 데 있습니다.
 
 \subsection{신뢰도 메트릭}
 
@@ -316,13 +315,13 @@ Backpressure RPL\cite{brpl}은 큐 백로그를 라우팅 결정에 통합하여
     PDR = \frac{\text{루트에서 수신된 패킷 수}}{\text{모든 송신자가 보낸 패킷 수}}
     \end{equation}
     
-    \item \textbf{종단간 지연(Proxy)}: 송신자 RTT 로그를 이용한 proxy 지연. 본 실험에서는 공격자/릴레이가 echo를 반환하므로 실제 루트까지의 E2E 지연과는 차이가 있을 수 있다.
+    \item \textbf{종단간 지연(Proxy)}: 송신자 RTT 로그를 이용한 proxy 지연입니다. 본 실험에서는 공격자/중계 노드가 echo를 반환하므로, 실제 루트까지의 E2E 지연과는 차이가 있을 수 있습니다.
     
     \item \textbf{제어 오버헤드}: DIS/DIO/DAO 메시지 수
     
     \item \textbf{신뢰도 진화}: 시간에 따른 신뢰도 값의 동역학
     
-    \item \textbf{탐지 시간 (Detection Delay)}: 공격자의 신뢰도 값이 임계값 $\tau$ 아래로 최초로 떨어지는 시점까지의 시간. 본 실험에서는 예비 관찰 지표로 정의하고, 추후 반복 실험에서 정량화할 계획입니다.
+    \item \textbf{탐지 시간 (Detection Delay)}: 공격자의 신뢰도 값이 임계값 $\tau$ 아래로 최초로 떨어지는 시점까지의 시간입니다. 본 실험에서는 예비 관찰 지표로 정의하고, 추후 반복 실험에서 정량화할 계획입니다.
 \end{enumerate}
 
 \subsection{실험 파라미터}
@@ -351,7 +350,7 @@ Trust 임계값 $\tau$ & 300 \\
 \section{결과 및 분석}
 %=============================================================================
 
-본 절의 결과는 현재 프로젝트의 예비 실행(단일 시드, 240초 시뮬레이션)으로부터 얻은 그림과 표를 기반으로 한다. 따라서 수치는 경향 파악용으로 해석하며, 통계적 유의성은 추가 반복 실험을 통해 검증할 필요가 있다.
+본 절의 결과는 현재 프로젝트의 예비 실행(단일 시드, 240초 시뮬레이션)으로부터 얻은 그림과 표를 기반으로 합니다. 따라서 수치는 경향 파악용으로 해석하며, 통계적 유의성은 추가 반복 실험을 통해 검증할 필요가 있습니다.
 
 \subsection{정상 동작 비교}
 
@@ -396,7 +395,7 @@ Trust 임계값 $\tau$ & 300 \\
 
 \textbf{분석:}
 \begin{itemize}
-    \item Trust ON에서 PDR이 80.00\% 수준으로 회복되는 경향을 확인했습니다
+    \item Trust ON에서 PDR이 80.00\% 수준으로 회복되는 경향을 관찰했습니다
     \item 신뢰도 업데이트 주기, 임계값, 관측 창 길이에 따라 성능이 달라질 수 있습니다
     \item 반복 실험과 파라미터 민감도 분석이 필요합니다
 \end{itemize}
@@ -412,12 +411,12 @@ Trust 임계값 $\tau$ & 300 \\
 
 \textbf{관찰 사항:}
 \begin{itemize}
-    \item 그래프는 정상 노드 평균(±표준편차)과 공격자 추이를 비교하여 신뢰도 분리 가능성을 보여줍니다
+    \item 그래프는 정상 노드 평균(±표준편차)과 공격자 추이를 비교하여 신뢰도 분리 가능성을 참고용으로 보여줍니다
     \item 현재 시각화는 베타/베이지안 신뢰도를 사용하며, 값 범위는 0--1입니다
-    \item 임계값 기반 차단은 EWMA(0--1000) 기준으로 동작하므로, 두 지표의 해석을 구분해야 합니다
+    \item 실제 차단/필터링 로직은 EWMA(0--1000) 기준으로 동작하므로, 본 그림은 차단 임계값과 1:1로 대응하지 않습니다
 \end{itemize}
 
-탐지 시간은 공격 비율, 관측 창, 신뢰도 업데이트 주기에 따라 달라집니다. 본 보고서에서는 예비 결과만 제시하며, 정량적 비교는 후속 실험에서 수행할 계획입니다.
+탐지 시간은 공격 비율, 관측 창, 신뢰도 업데이트 주기에 따라 달라질 수 있습니다. 본 보고서에서는 예비 결과만 제시하며, 정량적 비교는 후속 실험에서 수행할 계획입니다.
 
 \subsection{종합 성능 개요}
 
@@ -431,7 +430,7 @@ Trust 임계값 $\tau$ & 300 \\
 이 종합적인 뷰는 다음을 보여줍니다:
 \begin{itemize}
     \item 공격 강도 증가에 따른 성능 저하 패턴을 한눈에 비교할 수 있습니다
-    \item Trust ON/OFF에 따른 변화는 파라미터에 민감할 수 있음을 시사합니다
+    \item Trust ON/OFF에 따른 변화는 실험 파라미터 및 랜덤 시드에 민감할 수 있음을 시사합니다
 \end{itemize}
 
 \subsection{지연 트레이드오프}
@@ -459,7 +458,7 @@ Trust 임계값 $\tau$ & 300 \\
 \label{fig:tradeoff}
 \end{figure}
 
-산점도에서 신뢰도 기반 BRPL이 대안에 비해 PDR-지연 트레이드오프 측면에서 상대적으로 유리한 영역에 위치하는 경향을 관찰할 수 있습니다.
+산점도에서 신뢰도 기반 BRPL이 대안에 비해 PDR-지연 트레이드오프 측면에서 상대적으로 유리한 영역에 위치하는 경향을 관찰할 수 있습니다. 다만 이는 예비 결과이므로, 후속 반복 실험을 통해 경향의 재현성을 확인할 필요가 있습니다.
 
 \subsection{종합 성능 요약}
 
@@ -497,23 +496,17 @@ Figure~\ref{fig:pdr_heatmap}는 모든 실험 조합에 대한 종합적인 성�
 
 \subsection{신뢰도 메커니즘의 효과}
 
-실험 결과는 신뢰도 기반 라우팅이 선택적 포워딩 공격을 완화할 가능성을 보여줍니다. 주요 관찰 요인은 다음과 같습니다:
+예비 실험 결과는 신뢰도 기반 라우팅이 선택적 포워딩 공격을 완화할 가능성을 보여줍니다. 주요 관찰 요인은 다음과 같습니다:
 
 \begin{enumerate}
-    \item \textbf{탐지 가능성}: EWMA 기반 신뢰도가 악의적 행동과 정상 행동을 분리할 수 있는 신호를 제공합니다
-    \item \textbf{반응성}: 신뢰도 값이 임계값 아래로 이동하는 시간은 공격 강도 및 파라미터에 민감합니다
+    \item \textbf{탐지 가능성}: EWMA 기반 신뢰도가 악의적 행동과 정상 행동을 분리할 수 있는 신호를 제공할 수 있습니다
+    \item \textbf{반응성}: 신뢰도 값이 임계값 아래로 이동하는 시간은 공격 강도 및 파라미터에 민감할 수 있습니다
     \item \textbf{안정성}: 제어된 실험에서 false positive는 제한적으로 관찰되었습니다
 \end{enumerate}
 
 \subsection{기존 연구와의 비교}
 
-본 과제의 접근 방식은 기존 연구와 여러 면에서 다릅니다:
-
-\begin{itemize}
-    \item \textbf{통합}: 신뢰도가 별도의 모니터링 계층이 아니라 라우팅 결정에 긴밀하게 통합됩니다
-    \item \textbf{경량}: EWMA 계산은 리소스 제약이 있는 IoT 기기에 충분히 효율적입니다
-    \item \textbf{실용적}: Contiki-NG 구현은 실제 세계 실현 가능성을 입증합니다
-\end{itemize}
+본 과제에서 구현한 방식은 문헌의 신뢰도 기반 라우팅 접근과 유사한 문제의식을 공유합니다. 다만 본 보고서는 단일 시드 예비 실험을 기반으로 하므로, 본격적인 문헌 비교 및 정량 비교는 후속 실험(반복 실행, 통계 처리) 이후에 수행하는 것이 적절합니다. 
 
 \subsection{한계와 미해결 질문}
 
@@ -529,7 +522,7 @@ Figure~\ref{fig:pdr_heatmap}는 모든 실험 조합에 대한 종합적인 성�
 정교한 공격자는 탐지 임계값 바로 아래에서 패킷을 드롭할 수 있습니다(예: 50\% 대신 20\%).
 
 \paragraph{4. 신뢰도 수렴 시간}
-탐지 지연은 공격 비율에 따라 달라집니다. 최악의 경우 탐지 시간에 제한을 둘 수 있습니까?
+탐지 지연은 공격 비율에 따라 달라질 수 있습니다. 최악의 경우 탐지 시간에 제한을 둘 수 있는지 추가 검증이 필요합니다.
 
 \paragraph{5. 확장성}
 본 실험은 8개의 노드를 사용합니다. 이 접근 방식이 50개 이상의 노드가 있는 네트워크로 어떻게 확장될지는 추가 검증이 필요합니다.
@@ -556,7 +549,7 @@ Figure~\ref{fig:pdr_heatmap}는 모든 실험 조합에 대한 종합적인 성�
 
 \subsection{과제 결과 요약}
 
-본 과제에서는 Contiki-NG/Cooja 환경에서 선택적 포워딩 공격 시나리오를 구성하고, BRPL 계열 라우팅에 신뢰도 기반 부모 필터링을 결합한 프로토타입을 구현하여 예비 성능을 관찰했습니다. 제어된 조건에서 신뢰도 기반 필터링이 PDR 저하를 완화하는 경향을 확인했으며, 일부 지연 증가 및 파라미터(예: $\alpha$, $\tau$) 의존성이 존재함도 함께 확인했습니다.
+본 과제에서는 Contiki-NG/Cooja 환경에서 선택적 포워딩 공격 시나리오를 구성하고, BRPL 계열 라우팅에 신뢰도 기반 부모 필터링을 결합한 프로토타입을 구현하여 예비 성능을 관찰했습니다. 제어된 조건에서 신뢰도 기반 필터링이 PDR 저하를 완화하는 경향을 관찰했으며, 일부 지연 증가 및 파라미터(예: $\alpha$, $\tau$) 의존성이 존재할 수 있음을 함께 확인했습니다.
 
 \subsection{향후 연구 방향}
 
@@ -564,19 +557,18 @@ Figure~\ref{fig:pdr_heatmap}는 모든 실험 조합에 대한 종합적인 성�
 \begin{itemize}
     \item EWMA, 베이지안, 베타 평판 방법을 정량적으로 비교
     \item 현실적인 무선 모델(손실이 있는 UDGM, CC2420)로 테스트
-    \item 민감도 분석을 통해 최적의 신뢰도 파라미터($\alpha$, $\tau$) 체계적 도출
+    \item 민감도 분석을 통해 신뢰도 파라미터($\alpha$, $\tau$) 영향 범위 정리
 \end{itemize}
 
 \paragraph{장기:}
 \begin{itemize}
-    \item 머신 러닝을 사용한 이상 탐지와 통합
-    \item 대규모(30-50 노드), 복잡한 토폴로지에서 BRPL의 혼잡 제어 장점과 신뢰도 메커니즘의 시너지 효과 검증
+    \item 머신 러닝을 사용한 이상 탐지와 통합(가능성 탐색)
+    \item 대규모(30--50 노드), 복잡한 토폴로지에서 BRPL의 혼잡 대응과 신뢰도 기반 필터링의 상호작용 관찰
 \end{itemize}
 
 \subsection{마무리 생각}
 
-신뢰도 기반 라우팅은 내부자 공격에 대해 IoT 네트워크를 보호하는 유망한 방향을 나타냅니다. 적응형 공격자와 확장성에 대한 과제가 남아 있지만, 신뢰도를 라우팅 결정에 통합하는 핵심 접근 방식은 효과적임이 입증되었습니다. 핵심 통찰력은 라우팅 프로토콜이 모든 이웃을 동등하게 취급해서는 안 된다는 것입니다. 신뢰도는 악의적인 노드를 격리하면서 신뢰할 수 있는 이웃을 우선시하는 원칙적인 방법을 제공합니다.
-
+신뢰도 기반 라우팅은 내부자 공격을 다루기 위한 한 가지 접근으로 활용될 수 있습니다. 다만 본 과제의 결과는 단일 시드 예비 실험을 기반으로 하므로, 후속 반복 실험과 다양한 토폴로지/무선 환경에서의 추가 검증을 통해 결과의 재현성과 일반성을 확인할 필요가 있습니다.
 
 %=============================================================================
 % 참고문헌
@@ -635,6 +627,5 @@ static rpl_dag_t *best_parent(rpl_nbr_t *nbr) {
     return best_dag(nbr, parent);
 }
 \end{verbatim}
-
 
 \end{document}
