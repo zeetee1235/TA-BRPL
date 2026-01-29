@@ -1,0 +1,55 @@
+\contentsline {section}{\numberline {1}서론}{3}{section.1}%
+\contentsline {subsection}{\numberline {1.1}배경 및 동기}{3}{subsection.1.1}%
+\contentsline {subsection}{\numberline {1.2}연구 목표}{3}{subsection.1.2}%
+\contentsline {subsection}{\numberline {1.3}과제 산출물 및 범위}{3}{subsection.1.3}%
+\contentsline {section}{\numberline {2}시스템 아키텍처}{3}{section.2}%
+\contentsline {subsection}{\numberline {2.1}네트워크 모델}{3}{subsection.2.1}%
+\contentsline {subsubsection}{\numberline {2.1.1}토폴로지 구조}{3}{subsubsection.2.1.1}%
+\contentsline {subsubsection}{\numberline {2.1.2}무선 모델}{4}{subsubsection.2.1.2}%
+\contentsline {subsection}{\numberline {2.2}공격 모델}{4}{subsection.2.2}%
+\contentsline {subsubsection}{\numberline {2.2.1}선택적 포워딩 공격}{4}{subsubsection.2.2.1}%
+\contentsline {section}{\numberline {3}Trust-Aware BRPL 설계}{5}{section.3}%
+\contentsline {subsection}{\numberline {3.1}BRPL 개요}{5}{subsection.3.1}%
+\contentsline {subsection}{\numberline {3.2}신뢰도 메트릭}{5}{subsection.3.2}%
+\contentsline {subsubsection}{\numberline {3.2.1}신뢰도 계산}{5}{subsubsection.3.2.1}%
+\contentsline {paragraph}{1. EWMA (지수 가중 이동 평균)}{5}{section*.3}%
+\contentsline {paragraph}{2. 베이지안 신뢰도}{6}{section*.4}%
+\contentsline {paragraph}{3. 베타 평판}{6}{section*.5}%
+\contentsline {subsubsection}{\numberline {3.2.2}신뢰도 기반 부모 선택}{6}{subsubsection.3.2.2}%
+\contentsline {subsection}{\numberline {3.3}구현 세부사항}{6}{subsection.3.3}%
+\contentsline {section}{\numberline {4}실험 설정}{7}{section.4}%
+\contentsline {subsection}{\numberline {4.1}시뮬레이션 환경}{7}{subsection.4.1}%
+\contentsline {subsection}{\numberline {4.2}실험 시나리오}{7}{subsection.4.2}%
+\contentsline {subsection}{\numberline {4.3}메트릭}{7}{subsection.4.3}%
+\contentsline {subsection}{\numberline {4.4}실험 파라미터}{8}{subsection.4.4}%
+\contentsline {section}{\numberline {5}결과 및 분석}{8}{section.5}%
+\contentsline {subsection}{\numberline {5.1}정상 동작 비교}{8}{subsection.5.1}%
+\contentsline {subsection}{\numberline {5.2}신뢰도 없이 공격 영향}{9}{subsection.5.2}%
+\contentsline {subsection}{\numberline {5.3}신뢰도 기반 방어 효과}{9}{subsection.5.3}%
+\contentsline {subsection}{\numberline {5.4}신뢰도 값 진화}{10}{subsection.5.4}%
+\contentsline {subsection}{\numberline {5.5}종합 성능 개요}{11}{subsection.5.5}%
+\contentsline {subsection}{\numberline {5.6}지연 트레이드오프}{11}{subsection.5.6}%
+\contentsline {subsection}{\numberline {5.7}성능-지연 트레이드오프 공간}{12}{subsection.5.7}%
+\contentsline {subsection}{\numberline {5.8}종합 성능 요약}{13}{subsection.5.8}%
+\contentsline {subsection}{\numberline {5.9}제어 오버헤드 분석}{14}{subsection.5.9}%
+\contentsline {section}{\numberline {6}논의}{14}{section.6}%
+\contentsline {subsection}{\numberline {6.1}신뢰도 메커니즘의 효과}{14}{subsection.6.1}%
+\contentsline {subsection}{\numberline {6.2}기존 연구와의 비교}{14}{subsection.6.2}%
+\contentsline {subsection}{\numberline {6.3}한계와 미해결 질문}{15}{subsection.6.3}%
+\contentsline {paragraph}{1. 공모 공격}{15}{section*.17}%
+\contentsline {paragraph}{2. 손실이 많은 네트워크에서의 False Positive}{15}{section*.18}%
+\contentsline {paragraph}{3. 공격 적응}{15}{section*.19}%
+\contentsline {paragraph}{4. 신뢰도 수렴 시간}{15}{section*.20}%
+\contentsline {paragraph}{5. 확장성}{15}{section*.21}%
+\contentsline {subsection}{\numberline {6.4}토폴로지 설계의 제한점과 BRPL 활용도}{15}{subsection.6.4}%
+\contentsline {paragraph}{BRPL 특성의 제한적 관찰}{15}{section*.22}%
+\contentsline {paragraph}{향후 확장 방향}{15}{section*.23}%
+\contentsline {section}{\numberline {7}결론 및 향후 연구}{15}{section.7}%
+\contentsline {subsection}{\numberline {7.1}과제 결과 요약}{15}{subsection.7.1}%
+\contentsline {subsection}{\numberline {7.2}향후 연구 방향}{16}{subsection.7.2}%
+\contentsline {paragraph}{단기:}{16}{section*.24}%
+\contentsline {paragraph}{장기:}{16}{section*.25}%
+\contentsline {subsection}{\numberline {7.3}마무리 생각}{16}{subsection.7.3}%
+\contentsline {section}{\numberline {A}신뢰도 계산 알고리즘}{16}{appendix.A}%
+\contentsline {subsection}{\numberline {A.1}EWMA 구현}{16}{subsection.A.1}%
+\contentsline {subsection}{\numberline {A.2}신뢰도 기반 부모 선택}{17}{subsection.A.2}%
