@@ -107,11 +107,11 @@
       </interface_config>
       <motetype_identifier>root_type</motetype_identifier>
     </mote>
-    <!-- Node 2: Sender at (30, 0) -->
+    <!-- Node 2: Attacker at (20, 0) -->
     <mote>
       <interface_config>
         org.contikios.cooja.interfaces.Position
-        <x>30.0</x>
+        <x>20.0</x>
         <y>0.0</y>
         <z>0.0</z>
       </interface_config>
@@ -123,9 +123,9 @@
         org.contikios.cooja.contikimote.interfaces.ContikiRadio
         <bitrate>250.0</bitrate>
       </interface_config>
-      <motetype_identifier>sender_type</motetype_identifier>
+      <motetype_identifier>attacker_type</motetype_identifier>
     </mote>
-    <!-- Node 3: Attacker at (60, 0) -->
+    <!-- Node 3: Sender at (60, 0) -->
     <mote>
       <interface_config>
         org.contikios.cooja.interfaces.Position
@@ -141,13 +141,13 @@
         org.contikios.cooja.contikimote.interfaces.ContikiRadio
         <bitrate>250.0</bitrate>
       </interface_config>
-      <motetype_identifier>attacker_type</motetype_identifier>
+      <motetype_identifier>sender_type</motetype_identifier>
     </mote>
-    <!-- Node 4: Sender at (90, 0) -->
+    <!-- Node 4: Sender at (50, 0) -->
     <mote>
       <interface_config>
         org.contikios.cooja.interfaces.Position
-        <x>90.0</x>
+        <x>50.0</x>
         <y>0.0</y>
         <z>0.0</z>
       </interface_config>
@@ -161,11 +161,11 @@
       </interface_config>
       <motetype_identifier>sender_type</motetype_identifier>
     </mote>
-    <!-- Node 5: Sender at (30, 20) -->
+    <!-- Node 5: Sender at (60, 20) -->
     <mote>
       <interface_config>
         org.contikios.cooja.interfaces.Position
-        <x>30.0</x>
+        <x>60.0</x>
         <y>20.0</y>
         <z>0.0</z>
       </interface_config>
@@ -179,12 +179,12 @@
       </interface_config>
       <motetype_identifier>sender_type</motetype_identifier>
     </mote>
-    <!-- Node 6: Sender at (60, 20) -->
+    <!-- Node 6: Sender at (60, -20) -->
     <mote>
       <interface_config>
         org.contikios.cooja.interfaces.Position
         <x>60.0</x>
-        <y>20.0</y>
+        <y>-20.0</y>
         <z>0.0</z>
       </interface_config>
       <interface_config>
@@ -197,12 +197,12 @@
       </interface_config>
       <motetype_identifier>sender_type</motetype_identifier>
     </mote>
-    <!-- Node 7: Sender at (30, -20) -->
+    <!-- Node 7: Sender at (50, 20) -->
     <mote>
       <interface_config>
         org.contikios.cooja.interfaces.Position
-        <x>30.0</x>
-        <y>-20.0</y>
+        <x>50.0</x>
+        <y>20.0</y>
         <z>0.0</z>
       </interface_config>
       <interface_config>
@@ -215,11 +215,11 @@
       </interface_config>
       <motetype_identifier>sender_type</motetype_identifier>
     </mote>
-    <!-- Node 8: Sender at (60, -20) -->
+    <!-- Node 8: Sender at (50, -20) -->
     <mote>
       <interface_config>
         org.contikios.cooja.interfaces.Position
-        <x>60.0</x>
+        <x>50.0</x>
         <y>-20.0</y>
         <z>0.0</z>
       </interface_config>
