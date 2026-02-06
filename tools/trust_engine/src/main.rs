@@ -13,6 +13,10 @@ struct Config {
     output: String,
     metrics_out: String,
     blacklist_out: String,
+    exposure_out: String,
+    parent_out: String,
+    stats_out: String,
+    stats_interval: u64,
     metric: String,
     alpha: f64,
     beta_a: f64,
@@ -27,6 +31,7 @@ struct Config {
     poll_ms: u64,
     from_start: bool,
     serial_socket: Option<String>,
+    attacker_id: u16,
 }
 
 #[derive(Debug, Default)]
@@ -40,6 +45,13 @@ struct TrustState {
     last_dropped: u64,
 }
 
+#[derive(Debug, Default)]
+struct ParentState {
+    samples: u64,
+    changes: u64,
+    last_parent: Option<String>,
+}
+
 fn usage() {
     eprintln!("Usage: trust_engine [--input <log>] [--output <trust_out>] [--metrics-out <metrics_csv>] ");
     eprintln!("                  [--metric ewma|bayes|beta] [--alpha <0..1>] [--beta-a <f>] [--beta-b <f>] ");
@@ -47,6 +59,7 @@ fn usage() {
     eprintln!("                  [--ewma-min <n>] [--bayes-min <0..1>] [--beta-min <0..1>] [--miss-threshold <n>]");
     eprintln!("                  [--forwarders-only] [--fwd-drop-threshold <0..1>]");
     eprintln!("                  [--follow] [--poll-ms <ms>] [--from-start] [--serial-socket <host:port>]");
+    eprintln!("                  [--attacker-id <id>] [--exposure-out <csv>] [--parent-out <csv>] [--stats-out <csv>] [--stats-interval <n>]");
 }
 
 fn parse_args() -> Config {
@@ -55,6 +68,10 @@ fn parse_args() -> Config {
         output: "logs/trust_updates.txt".to_string(),
         metrics_out: "logs/trust_metrics.csv".to_string(),
         blacklist_out: "logs/blacklist.csv".to_string(),
+        exposure_out: "".to_string(),
+        parent_out: "".to_string(),
+        stats_out: "".to_string(),
+        stats_interval: 200,
         metric: "ewma".to_string(),
         alpha: 0.2,
         beta_a: 1.0,
@@ -69,6 +86,7 @@ fn parse_args() -> Config {
         poll_ms: 200,
         from_start: false,
         serial_socket: None,
+        attacker_id: 2,
     };
 
     let mut args = env::args().skip(1);
@@ -82,6 +100,18 @@ fn parse_args() -> Config {
             }
             "--metrics-out" => {
                 if let Some(v) = args.next() { cfg.metrics_out = v; }
+            }
+            "--exposure-out" => {
+                if let Some(v) = args.next() { cfg.exposure_out = v; }
+            }
+            "--parent-out" => {
+                if let Some(v) = args.next() { cfg.parent_out = v; }
+            }
+            "--stats-out" => {
+                if let Some(v) = args.next() { cfg.stats_out = v; }
+            }
+            "--stats-interval" => {
+                if let Some(v) = args.next() { cfg.stats_interval = v.parse().unwrap_or(cfg.stats_interval); }
             }
             "--blacklist-out" => {
                 if let Some(v) = args.next() { cfg.blacklist_out = v; }
@@ -122,6 +152,9 @@ fn parse_args() -> Config {
             "--serial-socket" => {
                 if let Some(v) = args.next() { cfg.serial_socket = Some(v); }
             }
+            "--attacker-id" => {
+                if let Some(v) = args.next() { cfg.attacker_id = v.parse().unwrap_or(cfg.attacker_id); }
+            }
             "-h" | "--help" => {
                 usage();
                 std::process::exit(0);
@@ -145,9 +178,20 @@ fn process_reader<R: BufRead>(
     metrics: &mut File,
     blacklist: &mut HashMap<u16, bool>,
     blacklist_out: &mut File,
+    exposure_out: &mut Option<File>,
+    parent_out: &mut Option<File>,
+    stats_out: &mut Option<File>,
 ) -> io::Result<()> {
     let mut states: HashMap<u16, TrustState> = HashMap::new();
     let mut forwarders: HashMap<u16, bool> = HashMap::new();
+    let mut parent_states: HashMap<u16, ParentState> = HashMap::new();
+    let mut total_parent_samples: u64 = 0;
+    let mut total_parent_attacker: u64 = 0;
+    let mut total_tx: u64 = 0;
+    let mut tx_seen: HashMap<u64, bool> = HashMap::new();
+    let mut line_idx: u64 = 0;
+    let mut attacker_udp_total: u64 = 0;
+    let mut attacker_udp_dropped: u64 = 0;
     loop {
         let mut line = String::new();
         let n = reader.read_line(&mut line)?;
@@ -159,22 +203,51 @@ fn process_reader<R: BufRead>(
                 break;
             }
         }
-        if line.starts_with("CSV,FWD,") {
-            let parts: Vec<&str> = line.trim().split(',').collect();
-            if parts.len() < 6 {
+        line_idx += 1;
+        let trimmed = line.trim();
+
+        if trimmed.starts_with("CSV,TX,") {
+            let parts: Vec<&str> = trimmed.split(',').collect();
+            if parts.len() >= 4 {
+                if let (Ok(node_id), Ok(seq)) = (parts[2].parse::<u64>(), parts[3].parse::<u64>()) {
+                    let key = (node_id << 32) | (seq & 0xffffffff);
+                    if !tx_seen.contains_key(&key) {
+                        tx_seen.insert(key, true);
+                        total_tx += 1;
+                    }
+                }
+            }
+            continue;
+        }
+        if trimmed.starts_with("CSV,FWD,") {
+            let parts: Vec<&str> = trimmed.split(',').collect();
+            if parts.len() < 5 {
                 continue;
             }
             let node_id: u16 = match parts[2].parse() {
                 Ok(v) => v,
                 Err(_) => continue,
             };
-            let udp_to_root: f64 = match parts[4].parse::<u64>() {
-                Ok(v) => v as f64,
-                Err(_) => continue,
-            };
-            let dropped: f64 = match parts[5].parse::<u64>() {
-                Ok(v) => v as f64,
-                Err(_) => continue,
+            let (udp_to_root, dropped) = if parts.len() >= 6 {
+                let udp = match parts[4].parse::<u64>() {
+                    Ok(v) => v as f64,
+                    Err(_) => continue,
+                };
+                let dr = match parts[5].parse::<u64>() {
+                    Ok(v) => v as f64,
+                    Err(_) => continue,
+                };
+                (udp, dr)
+            } else {
+                let udp = match parts[3].parse::<u64>() {
+                    Ok(v) => v as f64,
+                    Err(_) => continue,
+                };
+                let dr = match parts[4].parse::<u64>() {
+                    Ok(v) => v as f64,
+                    Err(_) => continue,
+                };
+                (udp, dr)
             };
             forwarders.insert(node_id, true);
             let st = states.entry(node_id).or_default();
@@ -266,23 +339,110 @@ fn process_reader<R: BufRead>(
             );
             let _ = metrics.flush();
 
+            if node_id == cfg.attacker_id {
+                attacker_udp_total += delta_udp;
+                attacker_udp_dropped += delta_dropped;
+            }
+
+            if let Some(file) = exposure_out.as_mut() {
+                if total_tx > 0 {
+                    let e1 = (attacker_udp_total as f64) * 100.0 / (total_tx as f64);
+                    let e3 = if total_parent_samples > 0 {
+                        (total_parent_attacker as f64) * 100.0 / (total_parent_samples as f64)
+                    } else {
+                        0.0
+                    };
+                    let _ = writeln!(
+                        file,
+                        "{},{},{},{},{},{:.2},{:.2}",
+                        line_idx,
+                        total_tx,
+                        attacker_udp_total,
+                        attacker_udp_dropped,
+                        total_parent_samples,
+                        e1,
+                        e3
+                    );
+                    let _ = file.flush();
+                }
+            }
+
+            if let Some(file) = stats_out.as_mut() {
+                if cfg.stats_interval > 0 && (line_idx % cfg.stats_interval == 0) {
+                    let e1 = if total_tx > 0 {
+                        (attacker_udp_total as f64) * 100.0 / (total_tx as f64)
+                    } else { 0.0 };
+                    let e3 = if total_parent_samples > 0 {
+                        (total_parent_attacker as f64) * 100.0 / (total_parent_samples as f64)
+                    } else { 0.0 };
+                    let mut total_changes = 0u64;
+                    let mut total_pairs = 0u64;
+                    for st in parent_states.values() {
+                        if st.samples > 1 {
+                            total_changes += st.changes;
+                            total_pairs += st.samples - 1;
+                        }
+                    }
+                    let switch_rate = if total_pairs > 0 {
+                        (total_changes as f64) / (total_pairs as f64)
+                    } else { 0.0 };
+                    let _ = writeln!(
+                        file,
+                        "{},{},{},{},{},{:.2},{:.2},{:.4}",
+                        line_idx,
+                        total_tx,
+                        attacker_udp_total,
+                        attacker_udp_dropped,
+                        total_parent_samples,
+                        e1,
+                        e3,
+                        switch_rate
+                    );
+                    let _ = file.flush();
+                }
+            }
+
             continue;
         }
-        if !line.starts_with("CSV,RX,") {
-            continue;
-        }
-        let parts: Vec<&str> = line.trim().split(',').collect();
-        if parts.len() < 6 {
-            continue;
-        }
-        let node_id = match parse_node_id(parts[2]) {
-            Some(v) => v,
-            None => continue,
-        };
-        if cfg.forwarders_only && !forwarders.contains_key(&node_id) {
+
+        if trimmed.starts_with("CSV,PARENT,") {
+            let parts: Vec<&str> = trimmed.split(',').collect();
+            if parts.len() < 4 {
+                continue;
+            }
+            let node_id: u16 = match parts[2].parse() {
+                Ok(v) => v,
+                Err(_) => continue,
+            };
+            let parent_ip = parts[3];
+            if let Some(parent_id) = parse_node_id(parent_ip) {
+                total_parent_samples += 1;
+                if parent_id == cfg.attacker_id {
+                    total_parent_attacker += 1;
+                }
+            }
+            let st = parent_states.entry(node_id).or_default();
+            st.samples += 1;
+            if let Some(prev) = &st.last_parent {
+                if prev != parent_ip {
+                    st.changes += 1;
+                }
+            }
+            st.last_parent = Some(parent_ip.to_string());
             continue;
         }
     }
+
+    if let Some(file) = parent_out.as_mut() {
+        for (node_id, st) in parent_states.iter() {
+            let rate = if st.samples > 1 {
+                (st.changes as f64) / ((st.samples - 1) as f64)
+            } else { 0.0 };
+            let _ = writeln!(file, "{},{},{},{:.4}", node_id, st.samples, st.changes, rate);
+        }
+        let _ = file.flush();
+    }
+
     Ok(())
 }
 
@@ -310,6 +470,42 @@ fn main() -> io::Result<()> {
         .open(&cfg.blacklist_out)?;
     writeln!(blacklist_out, "node_id,success,failed,ewma,bayes,beta,trust_value,trust_raw")?;
 
+    let mut exposure_out = if cfg.exposure_out.is_empty() {
+        None
+    } else {
+        let mut f = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(&cfg.exposure_out)?;
+        writeln!(f, "line,tx_total,attacker_udp_total,attacker_udp_dropped,parent_samples,e1,e3")?;
+        Some(f)
+    };
+
+    let mut parent_out = if cfg.parent_out.is_empty() {
+        None
+    } else {
+        let mut f = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(&cfg.parent_out)?;
+        writeln!(f, "node_id,parent_samples,parent_changes,switch_rate")?;
+        Some(f)
+    };
+
+    let mut stats_out = if cfg.stats_out.is_empty() {
+        None
+    } else {
+        let mut f = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(&cfg.stats_out)?;
+        writeln!(f, "line,tx_total,attacker_udp_total,attacker_udp_dropped,parent_samples,e1,e3,parent_switch_rate")?;
+        Some(f)
+    };
+
     if let Some(sock) = &cfg.serial_socket {
         let mut parts = sock.split(':');
         let host = parts.next().unwrap_or("127.0.0.1");
@@ -319,7 +515,17 @@ fn main() -> io::Result<()> {
         stream.set_nodelay(true).ok();
         let reader = BufReader::new(stream);
         let mut blacklist: HashMap<u16, bool> = HashMap::new();
-        process_reader(reader, &cfg, &mut out, &mut metrics, &mut blacklist, &mut blacklist_out)?;
+        process_reader(
+            reader,
+            &cfg,
+            &mut out,
+            &mut metrics,
+            &mut blacklist,
+            &mut blacklist_out,
+            &mut exposure_out,
+            &mut parent_out,
+            &mut stats_out,
+        )?;
     } else {
         let file = File::open(&cfg.input)?;
         let mut reader = BufReader::new(file);
@@ -330,7 +536,17 @@ fn main() -> io::Result<()> {
             }
         }
         let mut blacklist: HashMap<u16, bool> = HashMap::new();
-        process_reader(reader, &cfg, &mut out, &mut metrics, &mut blacklist, &mut blacklist_out)?;
+        process_reader(
+            reader,
+            &cfg,
+            &mut out,
+            &mut metrics,
+            &mut blacklist,
+            &mut blacklist_out,
+            &mut exposure_out,
+            &mut parent_out,
+            &mut stats_out,
+        )?;
     }
 
     Ok(())

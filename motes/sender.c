@@ -11,7 +11,6 @@
 #include "net/ipv6/uip.h"
 #include "net/ipv6/uiplib.h"
 #include "net/ipv6/uip-ds6-route.h"
-#include "net/nbr-table.h"
 #include "net/routing/routing.h"
 #include "net/routing/rpl-classic/rpl.h"
 #include "net/routing/rpl-classic/rpl-private.h"
@@ -32,45 +31,28 @@
 #ifndef SEND_INTERVAL_SECONDS
 #define SEND_INTERVAL_SECONDS 10
 #endif
-#ifndef WARMUP_SECONDS
-#define WARMUP_SECONDS 60
-#endif
-#ifndef TRUST_SCALE
-#define TRUST_SCALE 1000
-#endif
 #define SEND_INTERVAL (SEND_INTERVAL_SECONDS * CLOCK_SECOND)
+
+#ifndef ROUTING_WAIT_MAX
+#define ROUTING_WAIT_MAX (300 * CLOCK_SECOND)
+#endif
+#ifndef ROUTING_POLL_INT
+#define ROUTING_POLL_INT (2 * CLOCK_SECOND)
+#endif
+#ifndef ROUTING_DIS_INT
+#define ROUTING_DIS_INT (20 * CLOCK_SECOND)
+#endif
 
 static struct simple_udp_connection udp_conn;
 static uip_ipaddr_t root_ipaddr;
-static uip_ipaddr_t forwarder_ipaddr;
-
-#ifndef ATTACKER_NODE_ID
-#define ATTACKER_NODE_ID 2
-#endif
-#ifndef RELAY_NODE_ID
-#define RELAY_NODE_ID 4
-#endif
-#define TRUST_SWITCH_THRESHOLD 700
-
-static uint16_t trust_attacker = TRUST_SCALE;
-static uint16_t trust_relay = TRUST_SCALE;
-
 static void
-set_forwarder(uint16_t node_id)
+update_root_ipaddr(void)
 {
-  uip_lladdr_t lladdr;
-  uip_ipaddr_t lladdr_ip;
-  memset(&lladdr, 0, sizeof(lladdr));
-  for(uint8_t i = 0; i < UIP_LLADDR_LEN; i++) {
-    lladdr.addr[i] = (i % 2 == 0) ? 0x00 : (uint8_t)node_id;
+  if(NETSTACK_ROUTING.get_root_ipaddr(&root_ipaddr)) {
+    return;
   }
-
-  uip_ip6addr(&lladdr_ip, 0xfe80, 0, 0, 0, 0, 0, 0, 0);
-  uip_ds6_set_addr_iid(&lladdr_ip, &lladdr);
-  uip_ds6_nbr_add(&lladdr_ip, &lladdr, 1, NBR_REACHABLE, NBR_TABLE_REASON_ROUTE, NULL);
-
-  uip_ipaddr_copy(&forwarder_ipaddr, &lladdr_ip);
-  printf("CSV,FORWARDER,%u\n", (unsigned)node_id);
+  /* Fallback: root global address configured by receiver_root.c */
+  uip_ip6addr(&root_ipaddr, 0xaaaa,0,0,0,0,0,0,1);
 }
 
 static void
@@ -150,11 +132,6 @@ handle_trust_input(const char *line)
   unsigned trust = 0;
   if(sscanf(line, "TRUST,%u,%u", &node_id, &trust) == 2) {
     brpl_trust_override((uint16_t)node_id, (uint16_t)trust);
-#if CSV_VERBOSE_LOGGING
-    uint16_t self_id = (uint16_t)linkaddr_node_addr.u8[LINKADDR_SIZE - 1];
-    printf("CSV,TRUST_IN,%u,%u,%u\n", self_id, node_id, trust);
-#endif
-    
     /* Auto-blacklist if trust is below threshold */
     if(trust < BLACKLIST_TRUST_THRESHOLD) {
       brpl_blacklist_add((uint16_t)node_id);
@@ -163,20 +140,6 @@ handle_trust_input(const char *line)
       brpl_blacklist_remove((uint16_t)node_id);
     }
 
-    if(node_id == ATTACKER_NODE_ID) {
-      trust_attacker = trust;
-      if(trust_attacker < TRUST_SWITCH_THRESHOLD) {
-        set_forwarder(RELAY_NODE_ID);
-      } else {
-        set_forwarder(ATTACKER_NODE_ID);
-      }
-    }
-    if(node_id == RELAY_NODE_ID) {
-      trust_relay = trust;
-      if(trust_attacker < TRUST_SWITCH_THRESHOLD && trust_relay >= TRUST_SWITCH_THRESHOLD) {
-        set_forwarder(RELAY_NODE_ID);
-      }
-    }
   }
 }
 
@@ -186,19 +149,21 @@ AUTOSTART_PROCESSES(&sender_process);
 PROCESS_THREAD(sender_process, ev, data)
 {
   static struct etimer periodic_timer;
-  static struct etimer warmup_timer;
   static struct etimer dis_timer;
   static uint32_t seq;
   static uint8_t last_reachable;
-  static uint8_t warmup_done;
+  static uint8_t routing_ready;
+  static clock_time_t routing_start;
+  static clock_time_t last_dis;
+  static struct etimer routing_timer;
   char buf[64];
 
   (void)ev; (void)data;
 
   PROCESS_BEGIN();
 
-  /* Root is aaaa::1 as configured by receiver_root.c. */
-  uip_ip6addr(&root_ipaddr, 0xaaaa,0,0,0,0,0,0,1);
+  /* Root address will be refreshed via routing API (with fallback). */
+  update_root_ipaddr();
 
 #ifdef BRPL_MODE
   printf("CSV,BRPL_MODE,%u,1\n", (unsigned)linkaddr_node_addr.u8[LINKADDR_SIZE - 1]);
@@ -212,16 +177,7 @@ PROCESS_THREAD(sender_process, ev, data)
   simple_udp_register(&udp_conn, UDP_PORT, NULL, UDP_PORT, echo_rx_callback);
   etimer_set(&periodic_timer, SEND_INTERVAL);
   etimer_set(&dis_timer, 30 * CLOCK_SECOND);
-  if(WARMUP_SECONDS > 0) {
-    etimer_set(&warmup_timer, WARMUP_SECONDS * CLOCK_SECOND);
-  } else {
-    etimer_stop(&warmup_timer);
-  }
   last_reachable = 0;
-  warmup_done = (WARMUP_SECONDS == 0);
-  if(warmup_done) {
-    LOG_INFO("warmup complete, start sending\n");
-  }
 
   LOG_INFO("routing driver: %s\n", NETSTACK_ROUTING.name);
   {
@@ -235,23 +191,41 @@ PROCESS_THREAD(sender_process, ev, data)
     }
     printf("\n");
   }
-#if TRUST_ENABLED
-  set_forwarder(RELAY_NODE_ID);
-#else
-  set_forwarder(ATTACKER_NODE_ID);
-#endif
+  /* Start routing readiness barrier */
+  routing_ready = 0;
+  routing_start = clock_time();
+  last_dis = 0;
+  etimer_set(&routing_timer, 0);
+  dis_output(NULL);
 
   while(1) {
     PROCESS_WAIT_EVENT();
 
-    if(ev == serial_line_event_message && data != NULL) {
-      handle_trust_input((const char *)data);
+    if(!routing_ready) {
+      if(etimer_expired(&routing_timer)) {
+        printf("ROUTING_WAIT joined=0 reachable=0\n");
+        if(last_dis == 0 || (clock_time() - last_dis) > ROUTING_DIS_INT) {
+          dis_output(NULL);
+          last_dis = clock_time();
+        }
+        if(clock_time() - routing_start > ROUTING_WAIT_MAX) {
+          printf("ROUTING_WAIT_TIMEOUT\n");
+          routing_ready = 1; /* proceed even if not reachable */
+        }
+        if(NETSTACK_ROUTING.node_is_reachable()) {
+          routing_ready = 1;
+          printf("ROUTING_READY joined=1 reachable=1\n");
+        } else {
+          etimer_set(&routing_timer, ROUTING_POLL_INT);
+        }
+      }
+      if(!routing_ready) {
+        continue;
+      }
     }
 
-    if(etimer_expired(&warmup_timer)) {
-      warmup_done = 1;
-      etimer_stop(&warmup_timer);
-      LOG_INFO("warmup complete, start sending\n");
+    if(ev == serial_line_event_message && data != NULL) {
+      handle_trust_input((const char *)data);
     }
 
     if(!etimer_expired(&periodic_timer)) {
@@ -285,16 +259,12 @@ PROCESS_THREAD(sender_process, ev, data)
       etimer_reset(&dis_timer);
     }
 
-    if(!warmup_done) {
-      LOG_INFO("warmup in progress\n");
-      continue;
-    }
-
     uint32_t t0 = (uint32_t)clock_time();
     seq++;
     snprintf(buf, sizeof(buf), "seq=%lu t0=%lu",
              (unsigned long)seq, (unsigned long)t0);
-    simple_udp_sendto(&udp_conn, buf, strlen(buf), &forwarder_ipaddr);
+    update_root_ipaddr();
+    simple_udp_sendto(&udp_conn, buf, strlen(buf), &root_ipaddr);
     LOG_INFO("TX id=%u seq=%lu t0=%lu joined=%u\n",
              (unsigned)linkaddr_node_addr.u8[LINKADDR_SIZE - 1],
              (unsigned long)seq,

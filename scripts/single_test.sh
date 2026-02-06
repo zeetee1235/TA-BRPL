@@ -17,9 +17,16 @@ ROUTING="BRPL"
 BRPL_MODE=1  # BRPL=1, MRHOF=0
 ATTACK="ATTACK"
 TRUST_ENABLED=${TRUST_ENABLED:-1}
-ATTACK_RATE=30
+ATTACK_RATE=${ATTACK_DROP_PCT:-30}
 SEED=999888
 ATTACKER_NODE_ID=2
+TOPOLOGY=${TOPOLOGY:-configs/topologies/T3.csc}
+
+if [ "$TRUST_ENABLED" -eq 1 ]; then
+    SCENARIO="6_brpl_attack_trust"
+else
+    SCENARIO="4_brpl_attack_notrust"
+fi
 
 RUN_NAME="${SCENARIO}_p${ATTACK_RATE}_s${SEED}"
 RUN_DIR="$RESULTS_BASE/$RUN_NAME"
@@ -51,8 +58,9 @@ sed -e "s/<randomseed>[0-9]*<\/randomseed>/<randomseed>$SEED<\/randomseed>/g" \
     -e "s|@TRUST_FEEDBACK_PATH@|${TRUST_FEEDBACK_FILE}|g" \
     -e "s/BRPL_MODE=[0-9]/BRPL_MODE=$BRPL_MODE/g" \
     -e "s/TRUST_ENABLED=[0-9]/TRUST_ENABLED=$TRUST_ENABLED/g" \
+    -e "s/TRUST_LAMBDA=[0-9][0-9]*/TRUST_LAMBDA=${TRUST_LAMBDA:-0}/g" \
     -e "s/ATTACK_DROP_PCT=[0-9][0-9]*/ATTACK_DROP_PCT=$ATTACK_RATE/g" \
-    "configs/topologies/T1_S.csc" > "$TEMP_CONFIG"
+    "$TOPOLOGY" > "$TEMP_CONFIG"
 
 # Disable SerialSocketServer
 awk '
@@ -78,6 +86,30 @@ echo "[2/3] Running simulation (400s, fast DIO for multi-hop)..."
 LOG_DIR="$PROJECT_DIR/$RUN_DIR/logs"
 mkdir -p "$LOG_DIR"
 
+TRUST_ENGINE_PID=""
+echo "[2/3] Starting trust_engine..."
+touch "$TRUST_FEEDBACK_FILE"
+touch "$LOG_DIR/COOJA.testlog"
+tools/trust_engine/target/release/trust_engine \
+    --input "$LOG_DIR/COOJA.testlog" \
+    --output "$TRUST_FEEDBACK_FILE" \
+    --metrics-out "$PROJECT_DIR/$RUN_DIR/trust_metrics.csv" \
+    --blacklist-out "$PROJECT_DIR/$RUN_DIR/blacklist.csv" \
+    --exposure-out "$PROJECT_DIR/$RUN_DIR/exposure.csv" \
+    --parent-out "$PROJECT_DIR/$RUN_DIR/parent_switch.csv" \
+    --stats-out "$PROJECT_DIR/$RUN_DIR/stats.csv" \
+    --stats-interval 200 \
+    --metric ewma \
+    --alpha 0.2 \
+    --ewma-min 0.7 \
+    --miss-threshold 5 \
+    --forwarders-only \
+    --fwd-drop-threshold 0.2 \
+    --attacker-id 2 \
+    --follow > "$PROJECT_DIR/$RUN_DIR/trust_engine.log" 2>&1 &
+TRUST_ENGINE_PID=$!
+sleep 2
+
 timeout 800 java --enable-preview ${JAVA_OPTS} \
     -jar "$COOJA_PATH/tools/cooja/build/libs/cooja.jar" \
     --no-gui \
@@ -88,6 +120,14 @@ timeout 800 java --enable-preview ${JAVA_OPTS} \
 
 COOJA_EXIT=$?
 rm -f "$TEMP_CONFIG"
+
+if [ -n "$TRUST_ENGINE_PID" ]; then
+    sleep 2
+    kill $TRUST_ENGINE_PID 2>/dev/null || true
+    sleep 1
+    kill -9 $TRUST_ENGINE_PID 2>/dev/null || true
+    wait $TRUST_ENGINE_PID 2>/dev/null || true
+fi
 
 if [ $COOJA_EXIT -ne 0 ]; then
     echo "❌ Simulation failed (exit: $COOJA_EXIT)"

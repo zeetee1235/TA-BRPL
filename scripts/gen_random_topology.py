@@ -21,6 +21,8 @@ def parse_args():
     ap.add_argument("--tx-range", type=float, default=45.0)
     ap.add_argument("--int-range", type=float, default=90.0)
     ap.add_argument("--min-dist", type=float, default=5.0, help="Minimum distance between nodes")
+    ap.add_argument("--connect-ratio", type=float, default=0.8,
+                    help="Require new nodes within this ratio of TX range to existing nodes")
     ap.add_argument("--attacker-id", type=int, default=3)
     ap.add_argument("--send-interval", type=int, default=30)
     ap.add_argument("--warmup", type=int, default=120)
@@ -36,11 +38,12 @@ def dist2(a, b):
     return dx * dx + dy * dy
 
 
-def place_nodes(n, rng, area, root_pos, tx_range, min_dist, fixed_positions):
+def place_nodes(n, rng, area, root_pos, tx_range, min_dist, fixed_positions, connect_ratio):
     positions = {1: root_pos}
     if fixed_positions:
         positions.update(fixed_positions)
     tx2 = tx_range * tx_range
+    connect2 = (tx_range * connect_ratio) ** 2
     min2 = min_dist * min_dist
     half = area / 2.0
 
@@ -57,8 +60,8 @@ def place_nodes(n, rng, area, root_pos, tx_range, min_dist, fixed_positions):
             if any(dist2(cand, p) < min2 for p in positions.values()):
                 continue
 
-            # Ensure connectivity to at least one existing node
-            if any(dist2(cand, p) <= tx2 for p in positions.values()):
+            # Ensure connectivity to at least one existing node (stricter than TX)
+            if any(dist2(cand, p) <= connect2 for p in positions.values()):
                 positions[node_id] = cand
                 placed = True
                 break
@@ -71,11 +74,11 @@ def motetype_commands(send_interval, warmup, attack_drop):
     root_cmd = "make -C ../motes -f Makefile.receiver -j receiver_root.cooja TARGET=cooja DEFINES=BRPL_MODE=1"
     sender_cmd = (
         "make -C ../motes -f Makefile.sender -j sender.cooja TARGET=cooja "
-        f"DEFINES=BRPL_MODE=1,TRUST_ENABLED=0,SEND_INTERVAL_SECONDS={send_interval},WARMUP_SECONDS={warmup}"
+        f"DEFINES=BRPL_MODE=1,TRUST_ENABLED=0,TRUST_LAMBDA=0,SEND_INTERVAL_SECONDS={send_interval},WARMUP_SECONDS={warmup}"
     )
     attacker_cmd = (
         "make -C ../motes -f Makefile.attacker -j attacker.cooja TARGET=cooja "
-        f"DEFINES=BRPL_MODE=1,ATTACK_DROP_PCT={attack_drop},WARMUP_SECONDS={warmup}"
+        f"DEFINES=BRPL_MODE=1,TRUST_LAMBDA=0,ATTACK_DROP_PCT={attack_drop},WARMUP_SECONDS={warmup}"
     )
     return root_cmd, sender_cmd, attacker_cmd
 
@@ -340,6 +343,7 @@ def main():
         args.tx_range,
         args.min_dist,
         fixed_positions,
+        args.connect_ratio,
     )
     if positions is None:
         print("Failed to place nodes with given constraints. Try larger area or smaller min-dist.", file=sys.stderr)

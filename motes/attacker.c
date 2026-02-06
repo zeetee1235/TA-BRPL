@@ -45,6 +45,10 @@
 #define ATTACK_WARMUP_SECONDS WARMUP_SECONDS
 #endif
 
+#ifndef ROUTING_DIS_INT
+#define ROUTING_DIS_INT (20 * CLOCK_SECOND)
+#endif
+
 static uint8_t effective_drop_pct;
 
 static uip_ipaddr_t root_ipaddr;

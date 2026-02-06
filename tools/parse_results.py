@@ -15,20 +15,16 @@ def parse_cooja_log(filename):
     """Cooja 로그 파일에서 CSV 라인 추출 및 분석"""
     
     # 데이터 저장소
-    tx_packets = defaultdict(list)  # {node_id: [seq1, seq2, ...]}
-    rx_packets = defaultdict(list)  # {node_id: [seq1, seq2, ...]}
+    tx_packets = defaultdict(set)  # {node_id: {seq1, seq2, ...}}
+    rx_packets = defaultdict(set)  # {node_id: {seq1, seq2, ...}}
     delays = []  # [(seq, delay_ms), ...]
     pending_tx_seqs = []  # seqs without node id
     inferred_sender_id = None
+    rx_candidates = []  # [(src_ip, seq, has_root_tag)]
+    seen_root_tagged_rx = False
     
     # 제어 패킷 카운터
     rpl_packets = 0
-    attacker_id = 3
-    parent_samples = 0
-    parent_attacker = 0
-    last_fwd_totals = defaultdict(lambda: {"udp": 0, "dropped": 0})
-    attacker_udp_total = 0
-    attacker_udp_dropped = 0
     
     try:
         with open(filename, 'r') as f:
@@ -37,20 +33,20 @@ def parse_cooja_log(filename):
                 
                 # CSV 라인 파싱
                 if 'CSV,RX,' in line:
-                    # CSV,RX,<src_ip>,<seq>,<t_recv>,<t0>,<len> (t0 optional)
+                    # CSV,RX,node=1,<src_ip>,<seq>,<t_recv>,<t0>,<len>
+                    # or CSV,RX,<src_ip>,<seq>,<t_recv>,<t0>,<len>
                     parts = line.split('CSV,RX,')[1].split(',')
                     if len(parts) >= 2:
-                        seq = int(parts[1])
-                        # src_ip에서 노드 ID 추출 (IPv6 마지막 16비트)
-                        src_ip = parts[0]
-                        try:
-                            ip_obj = ipaddress.ip_address(src_ip)
-                            node_id = int(ip_obj) & 0xffff
-                            rx_packets[node_id].append(seq)
-                            if inferred_sender_id is None:
-                                inferred_sender_id = node_id
-                        except ValueError:
-                            pass
+                        has_root_tag = (parts[0].strip() == "node=1")
+                        if has_root_tag and len(parts) >= 3:
+                            src_ip = parts[1]
+                            seq = int(parts[2])
+                        else:
+                            src_ip = parts[0]
+                            seq = int(parts[1])
+                        if has_root_tag:
+                            seen_root_tagged_rx = True
+                        rx_candidates.append((src_ip, seq, has_root_tag))
                     # Do not compute delay from RX timestamps (different mote clocks).
                     pass
                 
@@ -80,37 +76,7 @@ def parse_cooja_log(filename):
                     if len(parts) >= 2:
                         node_id = int(parts[0])
                         seq = int(parts[1])
-                        tx_packets[node_id].append(seq)
-
-                elif 'CSV,FWD,' in line:
-                    # CSV,FWD,<node_id>,<fwd_total>,<udp_to_root>,<dropped>
-                    parts = line.split('CSV,FWD,')[1].split(',')
-                    if len(parts) >= 4:
-                        node_id = int(parts[0])
-                        udp_to_root = int(parts[2])
-                        dropped = int(parts[3])
-                        last = last_fwd_totals[node_id]
-                        delta_udp = max(udp_to_root - last["udp"], 0)
-                        delta_dropped = max(dropped - last["dropped"], 0)
-                        last["udp"] = udp_to_root
-                        last["dropped"] = dropped
-                        if node_id == attacker_id:
-                            attacker_udp_total += delta_udp
-                            attacker_udp_dropped += delta_dropped
-
-                elif 'CSV,PARENT,' in line:
-                    # CSV,PARENT,<node_id>,<parent_ip|none|unknown>
-                    parts = line.split('CSV,PARENT,')[1].split(',')
-                    if len(parts) >= 2:
-                        parent_samples += 1
-                        parent_ip = parts[1]
-                        try:
-                            ip_obj = ipaddress.ip_address(parent_ip)
-                            parent_id = int(ip_obj) & 0xffff
-                            if parent_id == attacker_id:
-                                parent_attacker += 1
-                        except ValueError:
-                            pass
+                        tx_packets[node_id].add(seq)
 
                 elif 'TX seq=' in line:
                     # [INFO: SENDER   ] TX id=<n> seq=<n> ...
@@ -120,9 +86,9 @@ def parse_cooja_log(filename):
                         node_match = re.search(r'TX id=(\d+)', line)
                         if node_match:
                             node_id = int(node_match.group(1))
-                            tx_packets[node_id].append(seq)
+                            tx_packets[node_id].add(seq)
                         elif inferred_sender_id is not None:
-                            tx_packets[inferred_sender_id].append(seq)
+                            tx_packets[inferred_sender_id].add(seq)
                         else:
                             pending_tx_seqs.append(seq)
                 
@@ -135,20 +101,27 @@ def parse_cooja_log(filename):
         sys.exit(1)
 
     if inferred_sender_id is not None and pending_tx_seqs:
-        tx_packets[inferred_sender_id].extend(pending_tx_seqs)
+        for seq in pending_tx_seqs:
+            tx_packets[inferred_sender_id].add(seq)
 
-    exposure = {
-        "attacker_udp_total": attacker_udp_total,
-        "attacker_udp_dropped": attacker_udp_dropped,
-        "parent_samples": parent_samples,
-        "parent_attacker": parent_attacker,
-        "attacker_id": attacker_id,
-    }
+    # Apply Rule 1: RX only from root (node=1) when available
+    if rx_candidates:
+        for src_ip, seq, has_root_tag in rx_candidates:
+            if seen_root_tagged_rx and not has_root_tag:
+                continue
+            try:
+                ip_obj = ipaddress.ip_address(src_ip)
+                node_id = int(ip_obj) & 0xffff
+                rx_packets[node_id].add(seq)
+                if inferred_sender_id is None:
+                    inferred_sender_id = node_id
+            except ValueError:
+                pass
 
-    return tx_packets, rx_packets, delays, rpl_packets, exposure
+    return tx_packets, rx_packets, delays, rpl_packets
 
 
-def calculate_metrics(tx_packets, rx_packets, delays, rpl_packets, exposure):
+def calculate_metrics(tx_packets, rx_packets, delays, rpl_packets):
     """성능 지표 계산"""
     
     print("\n" + "="*60)
@@ -207,31 +180,6 @@ def calculate_metrics(tx_packets, rx_packets, delays, rpl_packets, exposure):
         overhead_ratio = (rpl_packets / total_tx) * 100
         print(f"Control/Data: {overhead_ratio:.2f}%")
 
-    # 4. Exposure (Attacker path inclusion)
-    print("\n[4] Exposure (Attacker Path Inclusion)")
-    print("-" * 60)
-    attacker_id = exposure["attacker_id"]
-    attacker_udp_total = exposure["attacker_udp_total"]
-    attacker_udp_dropped = exposure["attacker_udp_dropped"]
-    parent_samples = exposure["parent_samples"]
-    parent_attacker = exposure["parent_attacker"]
-
-    if total_tx > 0:
-        exposure_ratio = (attacker_udp_total / total_tx) * 100
-        print(f"E1 (via attacker {attacker_id}): {exposure_ratio:.2f}% (UDP to root)")
-    else:
-        print(f"E1 (via attacker {attacker_id}): N/A (no TX packets)")
-
-    if parent_samples > 0:
-        parent_ratio = (parent_attacker / parent_samples) * 100
-        print(f"E3 (parent=attacker): {parent_ratio:.2f}% ({parent_attacker}/{parent_samples})")
-    else:
-        print("E3 (parent=attacker): N/A (no parent samples)")
-
-    if attacker_udp_total > 0:
-        drop_ratio = (attacker_udp_dropped / attacker_udp_total) * 100
-        print(f"Attacker drop ratio: {drop_ratio:.2f}% ({attacker_udp_dropped}/{attacker_udp_total})")
-
     print("\n" + "="*60)
 
 
@@ -245,9 +193,9 @@ def main():
     
     print(f"Parsing log file: {log_file}")
     
-    tx_packets, rx_packets, delays, rpl_packets, exposure = parse_cooja_log(log_file)
+    tx_packets, rx_packets, delays, rpl_packets = parse_cooja_log(log_file)
     
-    calculate_metrics(tx_packets, rx_packets, delays, rpl_packets, exposure)
+    calculate_metrics(tx_packets, rx_packets, delays, rpl_packets)
 
 
 if __name__ == '__main__':

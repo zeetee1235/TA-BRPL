@@ -36,7 +36,7 @@ extern rpl_of_t rpl_brpl;
 /* RPL Fast Network Formation for Multi-hop Topology */
 /* Reduce DIO interval for faster convergence in multi-hop scenarios */
 #define RPL_CONF_DIO_INTERVAL_MIN 8    /* Default: 12 (4.096s) -> 8 (256ms) */
-#define RPL_CONF_DIO_INTERVAL_DOUBLINGS 12  /* Max interval ~1000s */
+#define RPL_CONF_DIO_INTERVAL_DOUBLINGS 10  /* Max interval ~256s */
 #define RPL_CONF_DIO_REDUNDANCY 10     /* Suppress threshold */
 
 /* Trust (EWMA) parameters */

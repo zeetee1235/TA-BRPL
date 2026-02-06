@@ -63,9 +63,6 @@ log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
-# Summary file
-SUMMARY_FILE="$RESULTS_BASE/experiment_summary.csv"
-echo "scenario,routing,attack_rate,trust,seed,pdr,avg_delay_ms,tx,rx,lost" > "$SUMMARY_FILE"
 
 # Progress tracking (account for skipped combos)
 count_runs() {
@@ -189,12 +186,14 @@ for topo in $TOPOLOGIES; do
             TRUST_FEEDBACK_FILE="$PROJECT_DIR/$RUN_DIR/trust_feedback.txt"
             
             # Replace all parameters
+            TRUST_LAMBDA=${TRUST_LAMBDA:-0}
             sed -e "s/<randomseed>[0-9]*<\/randomseed>/<randomseed>$seed<\/randomseed>/g" \
                 -e "s/@SIM_TIME_MS@/${SIM_TIME_MS}/g" \
                 -e "s/@SIM_TIME_SEC@/${SIM_TIME}/g" \
                 -e "s|@TRUST_FEEDBACK_PATH@|${TRUST_FEEDBACK_FILE}|g" \
                 -e "s/BRPL_MODE=[0-9]/BRPL_MODE=${BRPL_MODE}/g" \
                 -e "s/TRUST_ENABLED=[0-9]/TRUST_ENABLED=${trust}/g" \
+                -e "s/TRUST_LAMBDA=[0-9][0-9]*/TRUST_LAMBDA=${TRUST_LAMBDA}/g" \
                 -e "s/ATTACK_DROP_PCT=[0-9][0-9]*/ATTACK_DROP_PCT=${attack_rate}/g" \
                 -e "s/SEND_INTERVAL_SECONDS=[0-9][0-9]*/SEND_INTERVAL_SECONDS=${SEND_INTERVAL_SECONDS}/g" \
                 -e "s/WARMUP_SECONDS=[0-9][0-9]*/WARMUP_SECONDS=${WARMUP_SECONDS}/g" \
@@ -223,27 +222,30 @@ for topo in $TOPOLOGIES; do
             LOG_DIR="$PROJECT_DIR/$RUN_DIR/logs"
             mkdir -p "$LOG_DIR"
             
-            # Start trust_engine in background if trust is enabled
+            # Start trust_engine in background for all runs (trust ON/OFF)
             TRUST_ENGINE_PID=""
-            if [ "$trust" -eq 1 ]; then
-                log_info "  Starting trust_engine in real-time mode..."
-                touch "$TRUST_FEEDBACK_FILE"
-                touch "$LOG_DIR/COOJA.testlog"  # Pre-create log file for --follow mode
-                tools/trust_engine/target/release/trust_engine \
-                    --input "$LOG_DIR/COOJA.testlog" \
-                    --output "$TRUST_FEEDBACK_FILE" \
-                    --metrics-out "$PROJECT_DIR/$RUN_DIR/trust_metrics.csv" \
-                    --blacklist-out "$PROJECT_DIR/$RUN_DIR/blacklist.csv" \
-                    --metric ewma \
-                    --alpha 0.2 \
-                    --ewma-min 0.7 \
-                    --miss-threshold 5 \
-                    --forwarders-only \
-                    --fwd-drop-threshold 0.2 \
-                    --follow > "$PROJECT_DIR/$RUN_DIR/trust_engine.log" 2>&1 &
-                TRUST_ENGINE_PID=$!
-                sleep 2
-            fi
+            log_info "  Starting trust_engine in real-time mode..."
+            touch "$TRUST_FEEDBACK_FILE"
+            touch "$LOG_DIR/COOJA.testlog"  # Pre-create log file for --follow mode
+            tools/trust_engine/target/release/trust_engine \
+                --input "$LOG_DIR/COOJA.testlog" \
+                --output "$TRUST_FEEDBACK_FILE" \
+                --metrics-out "$PROJECT_DIR/$RUN_DIR/trust_metrics.csv" \
+                --blacklist-out "$PROJECT_DIR/$RUN_DIR/blacklist.csv" \
+                --exposure-out "$PROJECT_DIR/$RUN_DIR/exposure.csv" \
+                --parent-out "$PROJECT_DIR/$RUN_DIR/parent_switch.csv" \
+                --stats-out "$PROJECT_DIR/$RUN_DIR/stats.csv" \
+                --stats-interval 200 \
+                --metric ewma \
+                --alpha 0.2 \
+                --ewma-min 0.7 \
+                --miss-threshold 5 \
+                --forwarders-only \
+                --fwd-drop-threshold 0.2 \
+                --attacker-id 2 \
+                --follow > "$PROJECT_DIR/$RUN_DIR/trust_engine.log" 2>&1 &
+            TRUST_ENGINE_PID=$!
+            sleep 2
             
             timeout 800 java --enable-preview ${JAVA_OPTS} \
                 -jar "$COOJA_PATH/tools/cooja/build/libs/cooja.jar" \
@@ -261,7 +263,7 @@ for topo in $TOPOLOGIES; do
                 continue
             fi
             
-            # Stop trust_engine if it was running
+            # Stop trust_engine
             if [ -n "$TRUST_ENGINE_PID" ]; then
                 sleep 2
                 kill $TRUST_ENGINE_PID 2>/dev/null || true
@@ -274,20 +276,9 @@ for topo in $TOPOLOGIES; do
             # Clean up temp config
             rm -f "$TEMP_CONFIG"
             
-            # Parse results
+            # Parse results is handled by trust_engine outputs only
             if [ -f "$LOG_DIR/COOJA.testlog" ]; then
-                python3 tools/parse_results.py "$LOG_DIR/COOJA.testlog" > "$RUN_DIR/analysis.txt" 2>&1 || true
-                
-                # Extract metrics for summary
-                PDR=$(grep "Overall:.*PDR=" "$RUN_DIR/analysis.txt" | sed -n 's/.*PDR=\s*\([0-9.]*\)%.*/\1/p' || echo "0")
-                AVG_DELAY=$(grep "Average:" "$RUN_DIR/analysis.txt" | awk '{print $2}' || echo "0")
-                TX=$(grep "Overall:.*TX=" "$RUN_DIR/analysis.txt" | sed -n 's/.*TX=\s*\([0-9]*\).*/\1/p' || echo "0")
-                RX=$(grep "Overall:.*RX=" "$RUN_DIR/analysis.txt" | sed -n 's/.*RX=\s*\([0-9]*\).*/\1/p' || echo "0")
-                LOST=$((TX - RX))
-                
-                echo "$scenario_name,$routing,$attack_rate,$trust,$seed,$PDR,$AVG_DELAY,$TX,$RX,$LOST" >> "$SUMMARY_FILE"
-                
-                log_info "  Results: PDR=${PDR}% | Delay=${AVG_DELAY}ms | TX=$TX | RX=$RX"
+                log_info "  Logs captured: $LOG_DIR/COOJA.testlog"
             fi
             
             log_info "  Completed: $RUN_NAME"
@@ -302,9 +293,9 @@ log_info "All experiments completed!"
 log_info "============================================"
 echo ""
 log_info "Results saved to: $RESULTS_BASE"
-log_info "Summary file: $SUMMARY_FILE"
+log_info "Summary file: (disabled; trust_engine outputs in each run dir)"
 log_info ""
 log_info "Next steps:"
-log_info "  1. Run R analysis: Rscript scripts/analyze_results.R $RESULTS_BASE"
+log_info "  1. Use trust_engine outputs (exposure.csv / parent_switch.csv / stats.csv)"
 log_info "  2. Check docs/report/ for figures"
 log_info ""

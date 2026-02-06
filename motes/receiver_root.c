@@ -140,13 +140,19 @@ udp_rx_callback(struct simple_udp_connection *c,
       LOG_WARN("failed to update SR route for sender\n");
     }
     /* Trust calculation delegated to external trust_engine */
-    printf("CSV,RX,");
+    printf("CSV,RX,node=1,");
     uiplib_ipaddr_print(&reply_addr);
     printf(",%lu,%lu,%lu,%u\n",
            (unsigned long)seq,
            (unsigned long)t_recv,
            (unsigned long)t0,
            (unsigned)datalen);
+    if(t_recv >= t0) {
+      uint32_t delay_ticks = t_recv - t0;
+      printf("CSV,DELAY,%lu,%lu\n",
+             (unsigned long)seq,
+             (unsigned long)delay_ticks);
+    }
 
     snprintf(buf, sizeof(buf), "seq=%lu t0=%lu",
              (unsigned long)seq, (unsigned long)t0);
