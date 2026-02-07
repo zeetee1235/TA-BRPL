@@ -74,6 +74,17 @@ extern rpl_of_t rpl_brpl;
 #define TRUST_GAMMA 1
 #endif
 
+/* Attack mode (0: selective forwarding, 1: sinkhole rank manipulation) */
+#ifndef ATTACK_MODE
+#define ATTACK_MODE 0
+#endif
+#ifndef ATTACKER_NODE_ID
+#define ATTACKER_NODE_ID 2
+#endif
+#ifndef SINKHOLE_RANK_DELTA
+#define SINKHOLE_RANK_DELTA 1
+#endif
+
 /* CSV logging control (reduce RS232 buffer overflow) */
 #ifndef CSV_LOG_SAMPLE_RATE
 #define CSV_LOG_SAMPLE_RATE 10  /* Only log 1 out of every N events */

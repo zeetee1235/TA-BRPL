@@ -58,6 +58,18 @@ TEMP_CONFIG="configs/temp_quick_$TIMESTAMP.csc"
 SIM_TIME=${SIM_TIME:-600}  # 600 seconds for chain topology multi-hop
 SIM_TIME_MS=$((SIM_TIME * 1000))
 TRUST_FEEDBACK_FILE="$PROJECT_DIR/$RUN_DIR/trust_feedback.txt"
+ATTACK_MODE=${ATTACK_MODE:-0}
+ATTACKER_NODE_ID=${ATTACKER_NODE_ID:-2}
+SINKHOLE_RANK_DELTA=${SINKHOLE_RANK_DELTA:-1}
+SINK_MIN_HOP=${SINK_MIN_HOP:-256}
+SINK_TAU=${SINK_TAU:-0}
+SINK_LAMBDA_ADV=${SINK_LAMBDA_ADV:-0.01}
+SINK_LAMBDA_STAB=${SINK_LAMBDA_STAB:-0.01}
+SINK_BETA=${SINK_BETA:-0.1}
+SINK_KAPPA=${SINK_KAPPA:-0}
+SINK_W1=${SINK_W1:-0.5}
+SINK_W2=${SINK_W2:-0.5}
+TRUST_ALPHA=${TRUST_ALPHA:-0.5}
 
 # Replace all placeholders like run_experiments.sh does
 sed -e "s/<randomseed>[0-9]*<\/randomseed>/<randomseed>$SEED<\/randomseed>/g" \
@@ -74,7 +86,11 @@ sed -e "s/<randomseed>[0-9]*<\/randomseed>/<randomseed>$SEED<\/randomseed>/g" \
     -e "s/,PROJECT_CONF_PATH=\\\"[^\\\"]*\\\"//g" \
     -e "s/TRUST_GAMMA=[0-9][0-9]*/TRUST_GAMMA=${TRUST_GAMMA:-1}/g" \
     -e "/TRUST_GAMMA=/! s/TRUST_LAMBDA=${TRUST_LAMBDA:-0}/TRUST_LAMBDA=${TRUST_LAMBDA:-0},TRUST_GAMMA=${TRUST_GAMMA:-1}/g" \
+    -e "s/ATTACK_MODE=[0-9][0-9]*/ATTACK_MODE=${ATTACK_MODE}/g" \
+    -e "s/ATTACKER_NODE_ID=[0-9][0-9]*/ATTACKER_NODE_ID=${ATTACKER_NODE_ID}/g" \
+    -e "s/SINKHOLE_RANK_DELTA=[0-9][0-9]*/SINKHOLE_RANK_DELTA=${SINKHOLE_RANK_DELTA}/g" \
     -e "s/ATTACK_DROP_PCT=[0-9][0-9]*/ATTACK_DROP_PCT=$ATTACK_RATE/g" \
+    -e "/ATTACK_MODE=/! s/ATTACK_DROP_PCT=$ATTACK_RATE/ATTACK_DROP_PCT=$ATTACK_RATE,ATTACK_MODE=${ATTACK_MODE}/g" \
     "$TOPOLOGY" > "$TEMP_CONFIG"
 
 # Disable SerialSocketServer
@@ -117,12 +133,21 @@ touch "$LOG_DIR/COOJA.testlog"
         --stats-interval 200 \
         --metric ewma \
         --alpha 0.2 \
-    --ewma-min 0.7 \
-    --miss-threshold 5 \
-    --forwarders-only \
-    --fwd-drop-threshold 0.2 \
-    --attacker-id 2 \
-    --follow > "$PROJECT_DIR/$RUN_DIR/trust_engine.log" 2>&1 &
+        --ewma-min 0.7 \
+        --sink-min-hop "$SINK_MIN_HOP" \
+        --sink-tau "$SINK_TAU" \
+        --sink-lambda-adv "$SINK_LAMBDA_ADV" \
+        --sink-lambda-stab "$SINK_LAMBDA_STAB" \
+        --sink-beta "$SINK_BETA" \
+        --sink-kappa "$SINK_KAPPA" \
+        --sink-w1 "$SINK_W1" \
+        --sink-w2 "$SINK_W2" \
+        --trust-alpha "$TRUST_ALPHA" \
+        --miss-threshold 5 \
+        --forwarders-only \
+        --fwd-drop-threshold 0.2 \
+        --attacker-id 2 \
+        --follow > "$PROJECT_DIR/$RUN_DIR/trust_engine.log" 2>&1 &
 TRUST_ENGINE_PID=$!
 sleep 2
 

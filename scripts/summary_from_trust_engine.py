@@ -148,15 +148,29 @@ def main():
                     except:
                         pass
         parent_switch=None
+        sink_adv_attacker=None
+        sink_stab_attacker=None
+        sink_adv_mean=None
+        sink_stab_mean=None
         if os.path.exists(parent_path):
             parent_switch=read_parent_switch_avg(parent_path)
         if parent_switch is None:
             stats_path=os.path.join(run_dir,'stats.csv')
             if os.path.exists(stats_path):
                 parent_switch=read_stats_last_switch(stats_path)
+                last_stats=read_last_row_dict(stats_path)
+                if last_stats:
+                    try: sink_adv_attacker=float(last_stats.get('sink_adv_attacker',''))
+                    except: pass
+                    try: sink_stab_attacker=float(last_stats.get('sink_stab_attacker',''))
+                    except: pass
+                    try: sink_adv_mean=float(last_stats.get('sink_adv_mean',''))
+                    except: pass
+                    try: sink_stab_mean=float(last_stats.get('sink_stab_mean',''))
+                    except: pass
 
         # parse run name (supports legacy and new naming)
-        attack_rate=None; trust=None; seed=None; topo=None; lam=None; gam=None
+        attack_rate=None; trust=None; seed=None; topo=None; lam=None; gam=None; mode=None; delta=None; alpha=None
         m=re.search(r'_p(\d+)_', name)
         if m:
             attack_rate=int(m.group(1))
@@ -181,6 +195,18 @@ def main():
         else:
             lam=0
             gam=1
+        m=re.search(r'_mode(\d+)_', name)
+        if m:
+            mode=int(m.group(1))
+        m=re.search(r'_d(\d+)_', name)
+        if m:
+            delta=int(m.group(1))
+        m=re.search(r'_a([0-9.]+)_', name)
+        if m:
+            try:
+                alpha=float(m.group(1))
+            except:
+                alpha=None
 
         invalid_reason=[]
         if tx == 0:
@@ -201,6 +227,9 @@ def main():
             'trust': trust if trust is not None else '',
             'lambda': lam if lam is not None else '',
             'gamma': gam if gam is not None else '',
+            'attack_mode': mode if mode is not None else '',
+            'sink_delta': delta if delta is not None else '',
+            'trust_alpha': alpha if alpha is not None else '',
             'seed': seed,
             'pdr': f"{pdr:.2f}",
             'avg_delay_ms': f"{avg_delay:.2f}" if avg_delay is not None else '',
@@ -213,7 +242,11 @@ def main():
             'e1_den': f"{e1_den:.0f}" if e1_den is not None else '',
             'e3_num': f"{e3_num:.0f}" if e3_num is not None else '',
             'e3_den': f"{e3_den:.0f}" if e3_den is not None else '',
-            'parent_switch_rate': f"{parent_switch:.4f}" if parent_switch is not None else ''
+            'parent_switch_rate': f"{parent_switch:.4f}" if parent_switch is not None else '',
+            'sink_adv_attacker': f"{sink_adv_attacker:.4f}" if sink_adv_attacker is not None else '',
+            'sink_stab_attacker': f"{sink_stab_attacker:.4f}" if sink_stab_attacker is not None else '',
+            'sink_adv_mean': f"{sink_adv_mean:.4f}" if sink_adv_mean is not None else '',
+            'sink_stab_mean': f"{sink_stab_mean:.4f}" if sink_stab_mean is not None else '',
         }
         if invalid_reason:
             row['invalid_reason']=';'.join(invalid_reason)
@@ -223,7 +256,7 @@ def main():
 
     out_path=os.path.join(args.results_dir, args.out)
     with open(out_path,'w',newline='') as f:
-        fieldnames=['run','topology','attack_rate','trust','lambda','gamma','seed','pdr','avg_delay_ms','tx','rx','lost','e1','e1_num','e1_den','e3','e3_num','e3_den','parent_switch_rate']
+        fieldnames=['run','topology','attack_rate','trust','lambda','gamma','attack_mode','sink_delta','trust_alpha','seed','pdr','avg_delay_ms','tx','rx','lost','e1','e1_num','e1_den','e3','e3_num','e3_den','parent_switch_rate','sink_adv_attacker','sink_stab_attacker','sink_adv_mean','sink_stab_mean']
         w=csv.DictWriter(f, fieldnames=fieldnames)
         w.writeheader()
         for r in sorted(rows, key=lambda x:x['run']):
@@ -232,7 +265,7 @@ def main():
     if invalid_rows:
         invalid_path=os.path.join(args.results_dir, 'invalid_runs.csv')
         with open(invalid_path,'w',newline='') as f:
-            fieldnames=['run','topology','attack_rate','trust','lambda','gamma','seed','tx','rx','lost','e1','e1_num','e1_den','e3','e3_num','e3_den','invalid_reason']
+            fieldnames=['run','topology','attack_rate','trust','lambda','gamma','attack_mode','sink_delta','trust_alpha','seed','tx','rx','lost','e1','e1_num','e1_den','e3','e3_num','e3_den','invalid_reason']
             w=csv.DictWriter(f, fieldnames=fieldnames)
             w.writeheader()
             for r in sorted(invalid_rows, key=lambda x:x['run']):

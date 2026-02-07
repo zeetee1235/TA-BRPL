@@ -85,11 +85,11 @@ log_routing_status(void)
     const uip_ipaddr_t *paddr = rpl_parent_get_ipaddr(dag->preferred_parent);
     if(paddr != NULL) {
       uiplib_ipaddr_print(paddr);
-      printf("\n");
+      printf(",%u\n", (unsigned)dag->rank);
       return;
     }
   }
-  printf("none\n");
+  printf("none,0\n");
 }
 
 static int

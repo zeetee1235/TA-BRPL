@@ -33,6 +33,15 @@ struct Config {
     from_start: bool,
     serial_socket: Option<String>,
     attacker_id: u16,
+    sink_min_hop: f64,
+    sink_tau: f64,
+    sink_lambda_adv: f64,
+    sink_lambda_stab: f64,
+    sink_beta: f64,
+    sink_kappa: f64,
+    sink_w1: f64,
+    sink_w2: f64,
+    trust_alpha: f64,
 }
 
 #[derive(Debug, Default)]
@@ -52,6 +61,12 @@ struct ParentState {
     last_parent: Option<String>,
 }
 
+#[derive(Debug, Default)]
+struct RankState {
+    last_rank: u16,
+    last_parent: Option<u16>,
+}
+
 fn usage() {
     eprintln!("Usage: trust_engine [--input <log>] [--output <trust_out>] [--metrics-out <metrics_csv>] ");
     eprintln!("                  [--metric ewma|bayes|beta] [--alpha <0..1>] [--beta-a <f>] [--beta-b <f>] ");
@@ -60,6 +75,8 @@ fn usage() {
     eprintln!("                  [--forwarders-only] [--fwd-drop-threshold <0..1>]");
     eprintln!("                  [--follow] [--poll-ms <ms>] [--from-start] [--serial-socket <host:port>]");
     eprintln!("                  [--attacker-id <id>] [--exposure-out <csv>] [--parent-out <csv>] [--stats-out <csv>] [--stats-interval <n>]");
+    eprintln!("                  [--sink-min-hop <v>] [--sink-tau <v>] [--sink-lambda-adv <v>] [--sink-lambda-stab <v>]");
+    eprintln!("                  [--sink-beta <v>] [--sink-kappa <v>] [--sink-w1 <v>] [--sink-w2 <v>] [--trust-alpha <v>]");
 }
 
 fn parse_args() -> Config {
@@ -88,6 +105,15 @@ fn parse_args() -> Config {
         from_start: false,
         serial_socket: None,
         attacker_id: 2,
+        sink_min_hop: 256.0,
+        sink_tau: 0.0,
+        sink_lambda_adv: 0.01,
+        sink_lambda_stab: 0.01,
+        sink_beta: 0.1,
+        sink_kappa: 0.0,
+        sink_w1: 0.5,
+        sink_w2: 0.5,
+        trust_alpha: 0.5,
     };
 
     let mut args = env::args().skip(1);
@@ -159,6 +185,33 @@ fn parse_args() -> Config {
             "--attacker-id" => {
                 if let Some(v) = args.next() { cfg.attacker_id = v.parse().unwrap_or(cfg.attacker_id); }
             }
+            "--sink-min-hop" => {
+                if let Some(v) = args.next() { cfg.sink_min_hop = v.parse().unwrap_or(cfg.sink_min_hop); }
+            }
+            "--sink-tau" => {
+                if let Some(v) = args.next() { cfg.sink_tau = v.parse().unwrap_or(cfg.sink_tau); }
+            }
+            "--sink-lambda-adv" => {
+                if let Some(v) = args.next() { cfg.sink_lambda_adv = v.parse().unwrap_or(cfg.sink_lambda_adv); }
+            }
+            "--sink-lambda-stab" => {
+                if let Some(v) = args.next() { cfg.sink_lambda_stab = v.parse().unwrap_or(cfg.sink_lambda_stab); }
+            }
+            "--sink-beta" => {
+                if let Some(v) = args.next() { cfg.sink_beta = v.parse().unwrap_or(cfg.sink_beta); }
+            }
+            "--sink-kappa" => {
+                if let Some(v) = args.next() { cfg.sink_kappa = v.parse().unwrap_or(cfg.sink_kappa); }
+            }
+            "--sink-w1" => {
+                if let Some(v) = args.next() { cfg.sink_w1 = v.parse().unwrap_or(cfg.sink_w1); }
+            }
+            "--sink-w2" => {
+                if let Some(v) = args.next() { cfg.sink_w2 = v.parse().unwrap_or(cfg.sink_w2); }
+            }
+            "--trust-alpha" => {
+                if let Some(v) = args.next() { cfg.trust_alpha = v.parse().unwrap_or(cfg.trust_alpha); }
+            }
             "-h" | "--help" => {
                 usage();
                 std::process::exit(0);
@@ -190,6 +243,9 @@ fn process_reader<R: BufRead>(
     let mut states: HashMap<u16, TrustState> = HashMap::new();
     let mut forwarders: HashMap<u16, bool> = HashMap::new();
     let mut parent_states: HashMap<u16, ParentState> = HashMap::new();
+    let mut rank_states: HashMap<u16, RankState> = HashMap::new();
+    let mut sink_adv: HashMap<u16, f64> = HashMap::new();
+    let mut sink_stab: HashMap<u16, f64> = HashMap::new();
     let mut total_parent_samples: u64 = 0;
     let mut total_parent_attacker: u64 = 0;
     let mut e1_den: u64 = 0;
@@ -344,16 +400,22 @@ fn process_reader<R: BufRead>(
                 }
             }
 
-            let trust_val = if is_blacklisted {
-                0
+            let gray_trust = if is_blacklisted {
+                0.0
             } else {
                 match cfg.metric.as_str() {
-                    "bayes" => (bayes * TRUST_SCALE).round() as u16,
-                    "beta" => (beta * TRUST_SCALE).round() as u16,
-                    _ => (st.ewma * TRUST_SCALE).round() as u16,
+                    "bayes" => bayes,
+                    "beta" => beta,
+                    _ => st.ewma,
                 }
             };
-            let trust_value = (trust_val as f64) / TRUST_SCALE;
+            let adv = sink_adv.get(&node_id).cloned().unwrap_or(1.0);
+            let stab = sink_stab.get(&node_id).cloned().unwrap_or(1.0);
+            let sink_trust = adv.powf(cfg.sink_w1) * stab.powf(cfg.sink_w2);
+            let total_trust = gray_trust.powf(cfg.trust_alpha)
+                * sink_trust.powf(1.0 - cfg.trust_alpha);
+            let trust_val = (total_trust * TRUST_SCALE).round() as u16;
+            let trust_value = total_trust;
 
             if blacklisted_now {
                 let _ = writeln!(
@@ -434,6 +496,18 @@ fn process_reader<R: BufRead>(
                     } else { 0.0 };
                     let e3_num = total_parent_attacker;
                     let e3_den = total_parent_samples;
+                    let sink_adv_attacker = sink_adv.get(&cfg.attacker_id).cloned().unwrap_or(1.0);
+                    let sink_stab_attacker = sink_stab.get(&cfg.attacker_id).cloned().unwrap_or(1.0);
+                    let sink_adv_mean = if sink_adv.is_empty() {
+                        1.0
+                    } else {
+                        sink_adv.values().sum::<f64>() / sink_adv.len() as f64
+                    };
+                    let sink_stab_mean = if sink_stab.is_empty() {
+                        1.0
+                    } else {
+                        sink_stab.values().sum::<f64>() / sink_stab.len() as f64
+                    };
                     let mut total_changes = 0u64;
                     let mut total_pairs = 0u64;
                     for st in parent_states.values() {
@@ -447,7 +521,7 @@ fn process_reader<R: BufRead>(
                     } else { 0.0 };
                     let _ = writeln!(
                         file,
-                        "{},{},{},{},{},{},{:.2},{},{},{:.2},{},{},{:.4}",
+                        "{},{},{},{},{},{},{:.2},{},{},{:.2},{},{},{:.4},{:.4},{:.4},{:.4},{:.4}",
                         line_idx,
                         total_tx,
                         attacker_udp_total,
@@ -460,7 +534,11 @@ fn process_reader<R: BufRead>(
                         e3,
                         e3_num,
                         e3_den,
-                        switch_rate
+                        switch_rate,
+                        sink_adv_attacker,
+                        sink_stab_attacker,
+                        sink_adv_mean,
+                        sink_stab_mean
                     );
                     let _ = file.flush();
                 }
@@ -468,12 +546,43 @@ fn process_reader<R: BufRead>(
 
             continue;
         }
+        if trimmed.starts_with("CSV,DIO,") {
+            let parts: Vec<&str> = trimmed.split(',').collect();
+            if parts.len() < 6 {
+                continue;
+            }
+            let src_id: u16 = match parts[3].parse() {
+                Ok(v) => v,
+                Err(_) => continue,
+            };
+            let dio_rank: f64 = match parts[4].parse::<u64>() {
+                Ok(v) => v as f64,
+                Err(_) => continue,
+            };
+            let self_rank: f64 = match parts[5].parse::<u64>() {
+                Ok(v) => v as f64,
+                Err(_) => continue,
+            };
+            if self_rank > 0.0 {
+                let delta = dio_rank + cfg.sink_min_hop - self_rank;
+                let s = (-(delta) - cfg.sink_tau).max(0.0);
+                let t_adv = (-cfg.sink_lambda_adv * s).exp();
+                let prev = sink_adv.get(&src_id).cloned().unwrap_or(1.0);
+                let updated = (1.0 - cfg.sink_beta) * prev + cfg.sink_beta * t_adv;
+                sink_adv.insert(src_id, updated);
+            }
+            continue;
+        }
 
         if trimmed.starts_with("CSV,ROUTING,") {
             let parts: Vec<&str> = trimmed.split(',').collect();
-            if parts.len() < 5 {
+            if parts.len() < 6 {
                 continue;
             }
+            let node_id: u16 = match parts[2].parse() {
+                Ok(v) => v,
+                Err(_) => continue,
+            };
             let joined: u8 = match parts[3].parse() {
                 Ok(v) => v,
                 Err(_) => continue,
@@ -485,6 +594,21 @@ fn process_reader<R: BufRead>(
                     if parent_id == cfg.attacker_id {
                         total_parent_attacker += 1;
                     }
+                    let rank: u16 = match parts[5].parse() {
+                        Ok(v) => v,
+                        Err(_) => continue,
+                    };
+                    let rstate = rank_states.entry(node_id).or_default();
+                    if rstate.last_rank > 0 {
+                        let delta = (rank as f64) - (rstate.last_rank as f64);
+                        let u = (delta - cfg.sink_kappa).max(0.0);
+                        let t_stab = (-cfg.sink_lambda_stab * u).exp();
+                        let prev = sink_stab.get(&parent_id).cloned().unwrap_or(1.0);
+                        let updated = (1.0 - cfg.sink_beta) * prev + cfg.sink_beta * t_stab;
+                        sink_stab.insert(parent_id, updated);
+                    }
+                    rstate.last_rank = rank;
+                    rstate.last_parent = Some(parent_id);
                 }
             }
             continue;
@@ -513,7 +637,6 @@ fn process_reader<R: BufRead>(
     }
 
     if let Some(file) = parent_out.as_mut() {
-        eprintln!("parent_states size={}", parent_states.len());
         for (node_id, st) in parent_states.iter() {
             let rate = if st.samples > 1 {
                 (st.changes as f64) / ((st.samples - 1) as f64)
@@ -601,7 +724,7 @@ fn main() -> io::Result<()> {
             .open(&cfg.stats_out)?;
         writeln!(
             f,
-            "line,tx_total,attacker_udp_total,attacker_udp_dropped,parent_samples,parent_attacker_samples,e1,e1_num,e1_den,e3,e3_num,e3_den,parent_switch_rate"
+            "line,tx_total,attacker_udp_total,attacker_udp_dropped,parent_samples,parent_attacker_samples,e1,e1_num,e1_den,e3,e3_num,e3_den,parent_switch_rate,sink_adv_attacker,sink_stab_attacker,sink_adv_mean,sink_stab_mean"
         )?;
         Some(f)
     };

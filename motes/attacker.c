@@ -49,6 +49,14 @@
 #define ROUTING_DIS_INT (20 * CLOCK_SECOND)
 #endif
 
+#ifndef ATTACK_MODE
+#define ATTACK_MODE 0
+#endif
+
+#define ATTACK_MODE_SELECTIVE 0
+#define ATTACK_MODE_SINKHOLE  1
+#define ATTACK_MODE_COMBINED  2
+
 static uint8_t effective_drop_pct;
 
 static uip_ipaddr_t root_ipaddr;
@@ -91,11 +99,11 @@ log_routing_status(void)
     const uip_ipaddr_t *paddr = rpl_parent_get_ipaddr(dag->preferred_parent);
     if(paddr != NULL) {
       uiplib_ipaddr_print(paddr);
-      printf("\n");
+      printf(",%u\n", (unsigned)dag->rank);
       return;
     }
   }
-  printf("none\n");
+  printf("none,0\n");
 }
 
 static uint8_t
@@ -202,7 +210,7 @@ udp_rx_callback(struct simple_udp_connection *c,
     last_seq[sender_id] = seq;
   }
 
-  if(attack_enabled && should_attack_drop()) {
+  if(attack_enabled && ATTACK_MODE != ATTACK_MODE_SINKHOLE && should_attack_drop()) {
     fwd_udp_root_dropped++;
     LOG_WARN("drop fwd UDP to root\n");
     return;
@@ -239,7 +247,7 @@ ip_output(const linkaddr_t *localdest)
     fwd_total++;
   }
 
-  if(is_forwarded_udp_to_root() && should_attack_drop()) {
+  if(is_forwarded_udp_to_root() && ATTACK_MODE != ATTACK_MODE_SINKHOLE && should_attack_drop()) {
     fwd_udp_root++;
     fwd_udp_root_dropped++;
     LOG_WARN("drop fwd UDP to root\n");
@@ -310,6 +318,9 @@ PROCESS_THREAD(attacker_process, ev, data)
   LOG_INFO("=== ATTACKER NODE INITIALIZED === (Node ID: %u)\n", 
            (unsigned)linkaddr_node_addr.u8[LINKADDR_SIZE - 1]);
   LOG_INFO("attack will start after %u second warmup\n", ATTACK_WARMUP_SECONDS);
+  LOG_INFO("attack mode: %s\n",
+           ATTACK_MODE == ATTACK_MODE_SINKHOLE ? "SINKHOLE" :
+           (ATTACK_MODE == ATTACK_MODE_COMBINED ? "COMBINED" : "SELECTIVE"));
   LOG_INFO("routing driver: %s\n", NETSTACK_ROUTING.name);
   {
     unsigned node_id = (unsigned)linkaddr_node_addr.u8[LINKADDR_SIZE - 1];
@@ -335,7 +346,12 @@ PROCESS_THREAD(attacker_process, ev, data)
     etimer_set(&warmup_timer, ATTACK_WARMUP_SECONDS * CLOCK_SECOND);
   } else {
     attack_enabled = 1;
-    LOG_INFO("attack enabled: drop=%u%%\n", (unsigned)ATTACK_DROP_PCT);
+    if(ATTACK_MODE == ATTACK_MODE_SINKHOLE) {
+      LOG_INFO("attack enabled: sinkhole rank manipulation\n");
+      effective_drop_pct = 0;
+    } else {
+      LOG_INFO("attack enabled: drop=%u%%\n", (unsigned)ATTACK_DROP_PCT);
+    }
   }
 
   while(1) {
@@ -345,7 +361,12 @@ PROCESS_THREAD(attacker_process, ev, data)
     }
     if(!attack_enabled && ATTACK_WARMUP_SECONDS > 0 && etimer_expired(&warmup_timer)) {
       attack_enabled = 1;
-      LOG_INFO("attack enabled: drop=%u%%\n", (unsigned)ATTACK_DROP_PCT);
+      if(ATTACK_MODE == ATTACK_MODE_SINKHOLE) {
+        LOG_INFO("attack enabled: sinkhole rank manipulation\n");
+        effective_drop_pct = 0;
+      } else {
+        LOG_INFO("attack enabled: drop=%u%%\n", (unsigned)ATTACK_DROP_PCT);
+      }
     }
     if(etimer_expired(&dis_timer)) {
       if(!NETSTACK_ROUTING.node_has_joined()) {

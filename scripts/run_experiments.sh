@@ -12,13 +12,28 @@ QUICK_PREVIEW=1  # set to 0 for full run
 SIM_TIME=600  # default: 10 minutes per simulation
 ATTACK_RATES=(0 30 50 70)  # Drop percentages (0 for normal scenarios)
 SEEDS=(123456 234567 345678 456789 567890)  # default: 5 seeds
-INCLUDE_OPTIONAL_SCENARIOS=0  # set to 1 to include 7/8 (Trust ON, no attack)
+INCLUDE_OPTIONAL_SCENARIOS=1  # include 8_brpl_normal_trust for normal + trust
 SEND_INTERVAL_SECONDS=30
 WARMUP_SECONDS=120
 PAUSE_BETWEEN_RUNS=0  # set to 1 to confirm each run interactively
 CHECKPOINT_TAIL_LINES=20  # number of log lines to show after each run
 LAMBDA_SET=(0 1 3 10)
 GAMMA_SET=(1 2 4)
+ATTACK_MODE=${ATTACK_MODE:-0}
+ATTACKER_NODE_ID=${ATTACKER_NODE_ID:-2}
+SINKHOLE_RANK_DELTA=${SINKHOLE_RANK_DELTA:-1}
+ATTACK_MODE_SET=(0 1 2)
+SINK_DELTA_SET=(1 2 4)
+TRUST_ALPHA_SET=(1.0 0.5)  # 1.0 = gray-only, 0.5 = sink-enabled (combined trust)
+SINK_MIN_HOP=${SINK_MIN_HOP:-256}
+SINK_TAU=${SINK_TAU:-0}
+SINK_LAMBDA_ADV=${SINK_LAMBDA_ADV:-0.01}
+SINK_LAMBDA_STAB=${SINK_LAMBDA_STAB:-0.01}
+SINK_BETA=${SINK_BETA:-0.1}
+SINK_KAPPA=${SINK_KAPPA:-0}
+SINK_W1=${SINK_W1:-0.5}
+SINK_W2=${SINK_W2:-0.5}
+TRUST_ALPHA=${TRUST_ALPHA:-0.5}
 
 # Topology list (override with TOPOLOGIES env var)
 # Example: TOPOLOGIES="configs/topologies/T1_S.csc configs/topologies/T3.csc" ./scripts/run_experiments.sh
@@ -122,9 +137,11 @@ count_runs() {
                     continue
                 fi
                 if [ "$trust" -eq 1 ] && [ "$attack" == "ATTACK" ]; then
-                    total=$((total + ${#SEEDS[@]} * ${#LAMBDA_SET[@]} * ${#GAMMA_SET[@]}))
+                    # trust + attack: sweep attack modes + sink delta + trust alpha + lambda/gamma
+                    total=$((total + ${#SEEDS[@]} * ${#ATTACK_MODE_SET[@]} * ${#SINK_DELTA_SET[@]} * ${#TRUST_ALPHA_SET[@]} * ${#LAMBDA_SET[@]} * ${#GAMMA_SET[@]}))
                 else
-                    total=$((total + ${#SEEDS[@]}))
+                    # no-attack or trust-off
+                    total=$((total + ${#SEEDS[@]} * ${#ATTACK_MODE_SET[@]}))
                 fi
             done
         done
@@ -187,6 +204,10 @@ run_one() {
             # Replace all parameters
             TRUST_LAMBDA=${TRUST_LAMBDA:-0}
             TRUST_GAMMA=${TRUST_GAMMA:-1}
+            ATTACK_MODE=${ATTACK_MODE:-0}
+            ATTACKER_NODE_ID=${ATTACKER_NODE_ID:-2}
+            SINKHOLE_RANK_DELTA=${SINKHOLE_RANK_DELTA:-1}
+            TRUST_ALPHA=${TRUST_ALPHA:-0.5}
             sed -e "s/<randomseed>[0-9]*<\/randomseed>/<randomseed>$seed<\/randomseed>/g" \
                 -e "s/@SIM_TIME_MS@/${SIM_TIME_MS}/g" \
                 -e "s/@SIM_TIME_SEC@/${SIM_TIME}/g" \
@@ -201,7 +222,11 @@ run_one() {
                 -e "s/,PROJECT_CONF_PATH=\\\"[^\\\"]*\\\"//g" \
                 -e "s/TRUST_GAMMA=[0-9][0-9]*/TRUST_GAMMA=${TRUST_GAMMA}/g" \
                 -e "/TRUST_GAMMA=/! s/TRUST_LAMBDA=${TRUST_LAMBDA}/TRUST_LAMBDA=${TRUST_LAMBDA},TRUST_GAMMA=${TRUST_GAMMA}/g" \
+                -e "s/ATTACK_MODE=[0-9][0-9]*/ATTACK_MODE=${ATTACK_MODE}/g" \
+                -e "s/ATTACKER_NODE_ID=[0-9][0-9]*/ATTACKER_NODE_ID=${ATTACKER_NODE_ID}/g" \
+                -e "s/SINKHOLE_RANK_DELTA=[0-9][0-9]*/SINKHOLE_RANK_DELTA=${SINKHOLE_RANK_DELTA}/g" \
                 -e "s/ATTACK_DROP_PCT=[0-9][0-9]*/ATTACK_DROP_PCT=${attack_rate}/g" \
+                -e "/ATTACK_MODE=/! s/ATTACK_DROP_PCT=${attack_rate}/ATTACK_DROP_PCT=${attack_rate},ATTACK_MODE=${ATTACK_MODE}/g" \
                 -e "s/SEND_INTERVAL_SECONDS=[0-9][0-9]*/SEND_INTERVAL_SECONDS=${SEND_INTERVAL_SECONDS}/g" \
                 -e "s/WARMUP_SECONDS=[0-9][0-9]*/WARMUP_SECONDS=${WARMUP_SECONDS}/g" \
                 "$PROJECT_DIR/$BASE_CONFIG" > "$TEMP_CONFIG"
@@ -247,6 +272,15 @@ run_one() {
                     --metric ewma \
                     --alpha 0.2 \
                     --ewma-min 0.7 \
+                    --sink-min-hop "$SINK_MIN_HOP" \
+                    --sink-tau "$SINK_TAU" \
+                    --sink-lambda-adv "$SINK_LAMBDA_ADV" \
+                    --sink-lambda-stab "$SINK_LAMBDA_STAB" \
+                    --sink-beta "$SINK_BETA" \
+                    --sink-kappa "$SINK_KAPPA" \
+                    --sink-w1 "$SINK_W1" \
+                    --sink-w2 "$SINK_W2" \
+                    --trust-alpha "$TRUST_ALPHA" \
                 --miss-threshold 5 \
                 --forwarders-only \
                 --fwd-drop-threshold 0.2 \
@@ -345,40 +379,49 @@ for topo in $TOPOLOGIES; do
             fi
             
             if [ "$trust" -eq 1 ] && [ "$attack" == "ATTACK" ]; then
-                for TRUST_LAMBDA in "${LAMBDA_SET[@]}"; do
-                    for TRUST_PENALTY_GAMMA in "${GAMMA_SET[@]}"; do
-                        for seed in "${SEEDS[@]}"; do
-                            CURRENT_RUN=$((CURRENT_RUN + 1))
-                            PROGRESS=$((CURRENT_RUN * 100 / TOTAL_RUNS))
-                            render_progress "$CURRENT_RUN" "$TOTAL_RUNS"
-                            
-                            RUN_NAME="${TOPO_NAME}_${scenario_name}_p${attack_rate}_lam${TRUST_LAMBDA}_gam${TRUST_PENALTY_GAMMA}_s${seed}"
-                            RUN_DIR="$RESULTS_BASE/$RUN_NAME"
-                            mkdir -p "$RUN_DIR"
-                            
-                            log_info "[$CURRENT_RUN/$TOTAL_RUNS] ${PROGRESS}% - Running: $RUN_NAME"
-                            log_info "  Topology: $TOPO_NAME | Routing: $routing | Attack: ${attack_rate}% | Trust: $trust | Lambda: ${TRUST_LAMBDA} | Gamma: ${TRUST_PENALTY_GAMMA} | Seed: $seed"
-                            
-                            run_one
+                for ATTACK_MODE in "${ATTACK_MODE_SET[@]}"; do
+                    for SINKHOLE_RANK_DELTA in "${SINK_DELTA_SET[@]}"; do
+                        for TRUST_ALPHA in "${TRUST_ALPHA_SET[@]}"; do
+                            for TRUST_LAMBDA in "${LAMBDA_SET[@]}"; do
+                                for TRUST_PENALTY_GAMMA in "${GAMMA_SET[@]}"; do
+                                    for seed in "${SEEDS[@]}"; do
+                                        CURRENT_RUN=$((CURRENT_RUN + 1))
+                                        PROGRESS=$((CURRENT_RUN * 100 / TOTAL_RUNS))
+                                        render_progress "$CURRENT_RUN" "$TOTAL_RUNS"
+                                        
+                                        RUN_NAME="${TOPO_NAME}_${scenario_name}_p${attack_rate}_mode${ATTACK_MODE}_d${SINKHOLE_RANK_DELTA}_a${TRUST_ALPHA}_lam${TRUST_LAMBDA}_gam${TRUST_PENALTY_GAMMA}_s${seed}"
+                                        RUN_DIR="$RESULTS_BASE/$RUN_NAME"
+                                        mkdir -p "$RUN_DIR"
+                                        
+                                        log_info "[$CURRENT_RUN/$TOTAL_RUNS] ${PROGRESS}% - Running: $RUN_NAME"
+                                        log_info "  Topology: $TOPO_NAME | Routing: $routing | Attack: ${attack_rate}% | Trust: $trust | Mode: ${ATTACK_MODE} | Delta: ${SINKHOLE_RANK_DELTA} | Alpha: ${TRUST_ALPHA} | Lambda: ${TRUST_LAMBDA} | Gamma: ${TRUST_PENALTY_GAMMA} | Seed: $seed"
+                                        
+                                        run_one
+                                    done
+                                done
+                            done
                         done
                     done
                 done
             else
-                for seed in "${SEEDS[@]}"; do
-                    CURRENT_RUN=$((CURRENT_RUN + 1))
-                    PROGRESS=$((CURRENT_RUN * 100 / TOTAL_RUNS))
-                    render_progress "$CURRENT_RUN" "$TOTAL_RUNS"
-                    
-                    RUN_NAME="${TOPO_NAME}_${scenario_name}_p${attack_rate}_s${seed}"
-                    RUN_DIR="$RESULTS_BASE/$RUN_NAME"
-                    mkdir -p "$RUN_DIR"
-                    
-                    log_info "[$CURRENT_RUN/$TOTAL_RUNS] ${PROGRESS}% - Running: $RUN_NAME"
-                    log_info "  Topology: $TOPO_NAME | Routing: $routing | Attack: ${attack_rate}% | Trust: $trust | Seed: $seed"
-                    
-                    TRUST_LAMBDA=0
-                    TRUST_PENALTY_GAMMA=1
-                    run_one
+                for ATTACK_MODE in "${ATTACK_MODE_SET[@]}"; do
+                    for seed in "${SEEDS[@]}"; do
+                        CURRENT_RUN=$((CURRENT_RUN + 1))
+                        PROGRESS=$((CURRENT_RUN * 100 / TOTAL_RUNS))
+                        render_progress "$CURRENT_RUN" "$TOTAL_RUNS"
+                        
+                        RUN_NAME="${TOPO_NAME}_${scenario_name}_p${attack_rate}_mode${ATTACK_MODE}_s${seed}"
+                        RUN_DIR="$RESULTS_BASE/$RUN_NAME"
+                        mkdir -p "$RUN_DIR"
+                        
+                        log_info "[$CURRENT_RUN/$TOTAL_RUNS] ${PROGRESS}% - Running: $RUN_NAME"
+                        log_info "  Topology: $TOPO_NAME | Routing: $routing | Attack: ${attack_rate}% | Trust: $trust | Mode: ${ATTACK_MODE} | Seed: $seed"
+                        
+                        TRUST_LAMBDA=0
+                        TRUST_PENALTY_GAMMA=1
+                        TRUST_ALPHA=1.0
+                        run_one
+                    done
                 done
             fi
         done  # attack rate loop
