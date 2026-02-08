@@ -27,29 +27,33 @@ def parse_args():
     ap.add_argument("--warmup", type=int, default=120)
     ap.add_argument("--attack-drop", type=int, default=50)
     ap.add_argument("--title", default=None)
+    ap.add_argument("--motes-relpath", default="../motes", 
+                    help="Relative path from .csc file to motes directory")
     return ap.parse_args()
 
 
-def motetype_commands(send_interval, warmup, attack_drop):
+def motetype_commands(send_interval, warmup, attack_drop, motes_path="../motes", project_conf_path="../project-conf.h"):
+    # Cooja executes commands from the directory of <source>, not from [CONFIG_DIR]
+    # So we don't need -C option, just plain make
     root_cmd = (
-        "make -C ../motes -f Makefile.receiver -j receiver_root.cooja TARGET=cooja WERROR=0 "
+        f"make -f Makefile.receiver receiver_root.cooja TARGET=cooja WERROR=0 "
         "DEFINES=BRPL_MODE=1,TRUST_LAMBDA=0,TRUST_PENALTY_GAMMA=1,"
-        "TRUST_LAMBDA_CONF=0,TRUST_PENALTY_GAMMA_CONF=1,PROJECT_CONF_PATH=../project-conf.h"
+        f"TRUST_LAMBDA_CONF=0,TRUST_PENALTY_GAMMA_CONF=1,PROJECT_CONF_PATH={project_conf_path}"
     )
     sender_cmd = (
-        "make -C ../motes -f Makefile.sender -j sender.cooja TARGET=cooja WERROR=0 "
+        f"make -f Makefile.sender sender.cooja TARGET=cooja WERROR=0 "
         f"DEFINES=BRPL_MODE=1,TRUST_ENABLED=0,TRUST_LAMBDA=0,TRUST_PENALTY_GAMMA=1,"
         f"TRUST_LAMBDA_CONF=0,TRUST_PENALTY_GAMMA_CONF=1,"
         f"SEND_INTERVAL_SECONDS={send_interval},WARMUP_SECONDS={warmup}"
     )
     attacker_cmd = (
-        "make -C ../motes -f Makefile.attacker -j attacker.cooja TARGET=cooja WERROR=0 "
+        f"make -f Makefile.attacker attacker.cooja TARGET=cooja WERROR=0 "
         f"DEFINES=BRPL_MODE=1,TRUST_LAMBDA=0,TRUST_PENALTY_GAMMA=1,"
         f"TRUST_LAMBDA_CONF=0,TRUST_PENALTY_GAMMA_CONF=1,"
         f"ATTACK_DROP_PCT={attack_drop},WARMUP_SECONDS={warmup}"
     )
     relay_cmd = (
-        "make -C ../motes -f Makefile.attacker -j attacker.cooja TARGET=cooja WERROR=0 "
+        f"make -f Makefile.attacker attacker.cooja TARGET=cooja WERROR=0 "
         "DEFINES=BRPL_MODE=1,TRUST_LAMBDA=0,TRUST_PENALTY_GAMMA=1,"
         "TRUST_LAMBDA_CONF=0,TRUST_PENALTY_GAMMA_CONF=1,"
         "ATTACK_DROP_PCT=0,WARMUP_SECONDS=0,ATTACK_WARMUP_SECONDS=0"
@@ -89,8 +93,15 @@ def write_csc(args, nodes):
     title = args.title
     if not title:
         title = "Trust-Aware BRPL Simulation (Manual)"
+    
+    # Calculate project-conf.h path relative to .csc file
+    motes_path = args.motes_relpath
+    # If motes_path is ../motes, project-conf.h is ../project-conf.h
+    # If motes_path is ../../motes, project-conf.h is ../../project-conf.h
+    project_conf_path = motes_path.replace("/motes", "/project-conf.h")
+    
     root_cmd, sender_cmd, attacker_cmd, relay_cmd = motetype_commands(
-        args.send_interval, args.warmup, args.attack_drop
+        args.send_interval, args.warmup, args.attack_drop, motes_path, project_conf_path
     )
 
     has_relay = any(role == "relay" for _, _, role in nodes.values())
@@ -133,7 +144,7 @@ def write_csc(args, nodes):
       org.contikios.cooja.contikimote.ContikiMoteType
       <identifier>relay_type</identifier>
       <description>Relay Node (No Attack)</description>
-      <source>[CONFIG_DIR]/../motes/attacker.c</source>
+      <source>[CONFIG_DIR]/../../motes/attacker.c</source>
       <commands>{relay_cmd}</commands>
       <moteinterface>org.contikios.cooja.interfaces.Position</moteinterface>
       <moteinterface>org.contikios.cooja.interfaces.Battery</moteinterface>
@@ -175,7 +186,7 @@ def write_csc(args, nodes):
       org.contikios.cooja.contikimote.ContikiMoteType
       <identifier>root_type</identifier>
       <description>Root Node</description>
-      <source>[CONFIG_DIR]/../motes/receiver_root.c</source>
+      <source>[CONFIG_DIR]/../../motes/receiver_root.c</source>
       <commands>{root_cmd}</commands>
       <moteinterface>org.contikios.cooja.interfaces.Position</moteinterface>
       <moteinterface>org.contikios.cooja.interfaces.Battery</moteinterface>
@@ -199,7 +210,7 @@ def write_csc(args, nodes):
       org.contikios.cooja.contikimote.ContikiMoteType
       <identifier>sender_type</identifier>
       <description>Sender Node</description>
-      <source>[CONFIG_DIR]/../motes/sender.c</source>
+      <source>[CONFIG_DIR]/../../motes/sender.c</source>
       <commands>{sender_cmd}</commands>
       <moteinterface>org.contikios.cooja.interfaces.Position</moteinterface>
       <moteinterface>org.contikios.cooja.interfaces.Battery</moteinterface>
@@ -223,7 +234,7 @@ def write_csc(args, nodes):
       org.contikios.cooja.contikimote.ContikiMoteType
       <identifier>attacker_type</identifier>
       <description>Selective Forwarding Attacker</description>
-      <source>[CONFIG_DIR]/../motes/attacker.c</source>
+      <source>[CONFIG_DIR]/../../motes/attacker.c</source>
       <commands>{attacker_cmd}</commands>
       <moteinterface>org.contikios.cooja.interfaces.Position</moteinterface>
       <moteinterface>org.contikios.cooja.interfaces.Battery</moteinterface>

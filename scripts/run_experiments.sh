@@ -37,8 +37,13 @@ TRUST_ALPHA=${TRUST_ALPHA:-0.5}
 
 # Topology list (override with TOPOLOGIES env var)
 # Example: TOPOLOGIES="configs/topologies/T1_S.csc configs/topologies/T3.csc" ./scripts/run_experiments.sh
-TOPOLOGIES_DEFAULT=$(ls configs/topologies/*.csc 2>/dev/null | tr '\n' ' ')
-TOPOLOGIES="${TOPOLOGIES:-$TOPOLOGIES_DEFAULT}"
+TOPOLOGIES_DEFAULT=(configs/topologies/*.csc)
+if [ -n "${TOPOLOGIES:-}" ]; then
+    # shellcheck disable=SC2206
+    TOPOLOGIES=($TOPOLOGIES)
+else
+    TOPOLOGIES=("${TOPOLOGIES_DEFAULT[@]}")
+fi
 
 if [ "$QUICK_PREVIEW" -eq 1 ]; then
     SIM_TIME=240
@@ -156,7 +161,7 @@ log_info "============================================"
 log_info "Trust-Aware BRPL Comprehensive Experiments"
 log_info "============================================"
 log_info "Total scenarios: ${#SCENARIOS[@]} (BRPL-only)"
-log_info "Topologies: $TOPOLOGIES"
+log_info "Topologies: ${TOPOLOGIES[*]}"
 log_info "Attack rates: ${ATTACK_RATES[@]}"
 log_info "Seeds: ${#SEEDS[@]}"
 log_info "Total runs: $TOTAL_RUNS"
@@ -363,7 +368,7 @@ if [ ! -f "tools/trust_engine/target/release/trust_engine" ]; then
 fi
 
 # Run experiments
-for topo in $TOPOLOGIES; do
+    for topo in "${TOPOLOGIES[@]}"; do
     TOPO_NAME=$(basename "$topo" .csc)
     for scenario_name in $(echo "${!SCENARIOS[@]}" | tr ' ' '\n' | sort); do
         IFS=',' read -r routing attack trust <<< "${SCENARIOS[$scenario_name]}"
