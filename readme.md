@@ -1,23 +1,19 @@
-# Trust-Aware BRPL (Selective Forwarding)
+## Trust-Aware BRPL for RPL-based IoT/WSN Networks
 
-상세 내용은 보고서에 정리되어 있습니다.
+This repository presents an implementation of a **Trust-Aware Backpressure RPL (BRPL)** framework built on top of standard RPL/BRPL in **Contiki-NG** and evaluated using the **Cooja** simulator.
 
-- 최신 보고서(Markdown): `docs/report/report.md`
-- 보고서(한글, 구버전): `docs/report/report_kr.pdf`
-- 결과 그래프: `docs/report/figure*.png`
+The proposed approach integrates **node-level trust metrics** into the backpressure-based routing decision process to improve network resilience against **routing-layer attacks**, including **selective forwarding (grayhole/blackhole)** and **sinkhole attacks**, in low-power and lossy IoT/WSN environments.
 
-## 빠른 실행(예비 실험)
+Unlike conventional RPL/BRPL, which primarily optimizes routing based on link metrics and queue backpressure, this work explicitly considers **forwarding behavior reliability** when selecting parents and forwarding paths. By penalizing untrustworthy nodes in the routing process, the protocol aims to:
 
-```bash
-# 배치 실험(예비 설정)
-./scripts/run_experiments.sh
+* Reduce packet loss caused by malicious or misbehaving forwarders
+* Maintain higher packet delivery ratios under increasing attack intensity
+* Improve robustness without relying on heavyweight cryptographic or intrusion-detection mechanisms
 
-# 결과 분석 및 그림 생성
-Rscript scripts/analyze_results.R results/<latest_run_dir>
-```
+The main objective of this repository is not to propose a standalone security protocol, but to **systematically analyze how trust-aware routing influences BRPL behavior** under adversarial conditions, with a focus on:
 
-## 핵심 파일
+* Packet Delivery Ratio (PDR) degradation patterns
+* Sensitivity to attack rate and topology structure
+* Trade-offs between performance, overhead, and resilience
 
-- 시뮬레이션 토폴로지: `configs/simulation.csc`
-- 실험 스크립트: `scripts/run_experiments.sh`
-- 결과 분석: `scripts/analyze_results.R`
+All experiments are conducted in a **fully reproducible simulation environment**, enabling controlled comparison between baseline RPL/BRPL and the proposed trust-aware variants across multiple network sizes and topologies.
