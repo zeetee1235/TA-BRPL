@@ -87,6 +87,15 @@ log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+get_attacker_id_from_csv() {
+    local topo_name="$1"
+    local topo_csv="configs/topologies/${topo_name}.csv"
+    if [ ! -f "$topo_csv" ]; then
+        return 1
+    fi
+    awk -F',' '$4=="attacker"{print $1; exit}' "$topo_csv"
+}
+
 summarize_run() {
     local run_dir="$1"
     local log_dir="$run_dir/logs"
@@ -235,6 +244,29 @@ run_one() {
                 -e "s/SEND_INTERVAL_SECONDS=[0-9][0-9]*/SEND_INTERVAL_SECONDS=${SEND_INTERVAL_SECONDS}/g" \
                 -e "s/WARMUP_SECONDS=[0-9][0-9]*/WARMUP_SECONDS=${WARMUP_SECONDS}/g" \
                 "$PROJECT_DIR/$BASE_CONFIG" > "$TEMP_CONFIG"
+            python3 - <<PY
+import re
+from pathlib import Path
+
+path = Path("$TEMP_CONFIG")
+text = path.read_text()
+
+def fix_defines(match):
+    defines = match.group(2)
+    if "ATTACK_MODE=" not in defines:
+        defines += f",ATTACK_MODE=${ATTACK_MODE}"
+    if "ATTACKER_NODE_ID=" not in defines:
+        defines += f",ATTACKER_NODE_ID=${ATTACKER_NODE_ID}"
+    return match.group(1) + defines
+
+pattern = re.compile(r'(DEFINES=)([^"<]*)')
+lines = []
+for line in text.splitlines():
+    if "DEFINES=" in line:
+        line = pattern.sub(fix_defines, line, count=1)
+    lines.append(line)
+path.write_text("\\n".join(lines) + "\\n")
+PY
 
             # Disable SerialSocketServer for headless runs (sandbox/network restrictions)
             awk '
@@ -289,7 +321,7 @@ run_one() {
                 --miss-threshold 5 \
                 --forwarders-only \
                 --fwd-drop-threshold 0.2 \
-                --attacker-id 2 \
+                --attacker-id "$ATTACKER_NODE_ID" \
                 --follow > "$PROJECT_DIR/$RUN_DIR/trust_engine.log" 2>&1 &
             TRUST_ENGINE_PID=$!
             sleep 2
@@ -370,6 +402,13 @@ fi
 # Run experiments
     for topo in "${TOPOLOGIES[@]}"; do
     TOPO_NAME=$(basename "$topo" .csc)
+    ATTACKER_NODE_ID="${ATTACKER_NODE_ID:-2}"
+    ATTACKER_FROM_CSV="$(get_attacker_id_from_csv "$TOPO_NAME" || true)"
+    if [ -n "$ATTACKER_FROM_CSV" ]; then
+        ATTACKER_NODE_ID="$ATTACKER_FROM_CSV"
+    else
+        log_warn "No attacker node found in configs/topologies/${TOPO_NAME}.csv; using ATTACKER_NODE_ID=$ATTACKER_NODE_ID"
+    fi
     for scenario_name in $(echo "${!SCENARIOS[@]}" | tr ' ' '\n' | sort); do
         IFS=',' read -r routing attack trust <<< "${SCENARIOS[$scenario_name]}"
         
