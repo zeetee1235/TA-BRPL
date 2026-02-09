@@ -139,6 +139,11 @@ draw_arrow <- function(x0, y0, x1, y1, dashed = FALSE, col = ST$arrow_col, close
              ))
 }
 
+draw_connector <- function(x0, y0, x1, y1, dashed = FALSE, col = ST$arrow_col, lwd = 0.9) {
+  grid.lines(unit(c(x0, x1), "npc"), unit(c(y0, y1), "npc"),
+             gp = gpar(col = col, lwd = lwd, lty = if (dashed) 2 else 1))
+}
+
 callout <- function(x, y, w, h, text, col = "#123A7A", fill = "#F2F6FF") {
   grid.roundrect(unit(x, "npc"), unit(y, "npc"),
                  width = unit(w, "npc"), height = unit(h, "npc"),
@@ -209,8 +214,15 @@ new_page(
   "Swimlane view: data-plane and control-plane signals merged into a routing penalty"
 )
 
-# safe vertical region (leave title and footer margins)
-y_top <- 0.86
+# --- Use a dedicated connector function (no arrowheads) ---
+draw_connector_last <- function(x0, y0, x1, y1, dashed = FALSE, col = ST$arrow_col, lwd = 0.9) {
+  grid.lines(
+    unit(c(x0, x1), "npc"), unit(c(y0, y1), "npc"),
+    gp = gpar(col = col, lwd = lwd, lty = if (dashed) 2 else 1)
+  )
+}
+
+# --- Safe vertical region (leave title/footer margins) ---
 y_bot <- 0.10
 
 lane_h1 <- 0.42
@@ -221,47 +233,91 @@ lane_y2 <- y_bot + lane_h2/2
 lane(0.50, lane_y1, 0.92, lane_h1, "Runtime observations (ONLINE)")
 lane(0.50, lane_y2, 0.92, lane_h2, "Routing decision (ONLINE)")
 
+# --- Box geometry ---
 box_w <- 0.38
 box_h <- 0.11
 
 xL <- 0.27
 xR <- 0.73
 
+# 3 rows within upper lane (top -> bottom)
 rows <- seq(lane_y1 + 0.12, lane_y1 - 0.12, length.out = 3)
 
-# Left: data-plane
+# --------------------
+# LEFT column: data-plane (top -> bottom)
+# --------------------
 rr_box(xL, rows[1], box_w, box_h,
-       "Data-plane evidence", "forwarding outcomes\n(success / failure)")
-draw_arrow(xL, rows[2] + box_h/2 + 0.015, xL, rows[1] - box_h/2 - 0.015)
+       "Data-plane evidence",
+       "forwarding outcomes\n(success / failure)")
 
 rr_box(xL, rows[2], box_w, box_h,
-       "Beta update", "posterior mean\n(estimate)")
-draw_arrow(xL, rows[3] + box_h/2 + 0.015, xL, rows[2] - box_h/2 - 0.015)
+       "Beta update",
+       "posterior mean\n(estimate)")
 
 rr_box(xL, rows[3], box_w, box_h,
-       "EWMA smoothing", "reduce short-term\nnoise")
+       "EWMA smoothing",
+       "reduce short-term\nnoise")
 
-# Right: control-plane
+# connectors: rows[1] -> rows[2] -> rows[3] (DOWNWARD)
+draw_connector_last(
+  x0 = xL, y0 = rows[1] - box_h/2,
+  x1 = xL, y1 = rows[2] + box_h/2
+)
+draw_connector_last(
+  x0 = xL, y0 = rows[2] - box_h/2,
+  x1 = xL, y1 = rows[3] + box_h/2
+)
+
+# --------------------
+# RIGHT column: control-plane (top -> bottom)
+# --------------------
 rr_box(xR, rows[1], box_w, box_h,
-       "Control-plane evidence", "RPL control traffic\n(DIO/DAO etc.)")
-draw_arrow(xR, rows[2] + box_h/2 + 0.015, xR, rows[1] - box_h/2 - 0.015)
+       "Control-plane evidence",
+       "RPL control traffic\n(DIO/DAO etc.)")
 
 rr_box(xR, rows[2], box_w, box_h,
-       "Anomaly / deviation score", "rank/metric deviation\n(implementation-defined)")
-draw_arrow(xR, rows[3] + box_h/2 + 0.015, xR, rows[2] - box_h/2 - 0.015)
+       "Anomaly / deviation score",
+       "rank/metric deviation\n(implementation-defined)")
 
 rr_box(xR, rows[3], box_w, box_h,
-       "Stability signal", "parent/rank changes\n(window W)")
+       "Stability signal",
+       "parent/rank changes\n(window W)")
 
-# Merge
+# connectors: rows[1] -> rows[2] -> rows[3] (DOWNWARD)
+draw_connector_last(
+  x0 = xR, y0 = rows[1] - box_h/2,
+  x1 = xR, y1 = rows[2] + box_h/2
+)
+draw_connector_last(
+  x0 = xR, y0 = rows[2] - box_h/2,
+  x1 = xR, y1 = rows[3] + box_h/2
+)
+
+# --------------------
+# MERGE: trust aggregation in lower lane
+# --------------------
 merge_y <- lane_y2 + 0.09
 rr_box(0.50, merge_y, 0.50, 0.11,
-       "Trust aggregation", "produce T_total from available signals")
+       "Trust aggregation",
+       "produce T_total from available signals")
 
-draw_arrow(xL, rows[3] - box_h/2 - 0.02, 0.43, merge_y + 0.05, col = "#2459A6")
-draw_arrow(xR, rows[3] - box_h/2 - 0.02, 0.57, merge_y + 0.05, col = "#2459A6")
+# connectors from both bottom boxes -> merge (diagonal DOWNWARD into merge)
+# from left bottom (rows[3]) to merge top-left
+draw_connector_last(
+  x0 = xL, y0 = rows[3] - box_h/2,
+  x1 = 0.43, y1 = merge_y + 0.11/2,
+  col = "#2459A6"
+)
+# from right bottom (rows[3]) to merge top-right
+draw_connector_last(
+  x0 = xR, y0 = rows[3] - box_h/2,
+  x1 = 0.57, y1 = merge_y + 0.11/2,
+  col = "#2459A6"
+)
 
-# Final decision
+# --------------------
+# FINAL: penalty & routing decision
+# --------------------
 final_y <- lane_y2 - 0.09
 rr_box(0.50, final_y, 0.74, 0.14,
        "Penalty & parent selection",
@@ -270,10 +326,13 @@ rr_box(0.50, final_y, 0.74, 0.14,
        label_gp = gpar(fontfamily = ST$font, fontsize = 10.6, fontface = "bold", col = "#123A7A"),
        sub_gp   = gpar(fontfamily = ST$font, fontsize = 9.0, col = "#123A7A"))
 
-draw_arrow(0.50, merge_y - 0.11/2 - 0.02, 0.50, final_y + 0.14/2 + 0.02)
+# connector: merge -> final (DOWNWARD)
+draw_connector_last(
+  x0 = 0.50, y0 = merge_y - 0.11/2,
+  x1 = 0.50, y1 = final_y + 0.14/2
+)
 
-# Reviewer-safe footer:
-# Don't claim "no offline feedback" if your system later adds any adaptive logic from logs.
+# Footer callout (reviewer-safe)
 callout(
   0.50, 0.055, 0.92, 0.075,
   "Offline log parsing (if used) is for evaluation/diagnostics only and is not part of the online routing loop.",
@@ -281,6 +340,7 @@ callout(
 )
 
 dev.off()
+
 
 # -------------------- Fig 3: Experiment workflow --------------------
 open_pdf(file.path(out_dir, "experiment_workflow.pdf"), width = 10.4, height = 5.8)
@@ -298,18 +358,52 @@ rr_box(0.58, 0.70, 0.22, 0.18, "Online Trust\n+ Routing", "runtime decisions",
        sub_gp = gpar(fontfamily = ST$font, fontsize = 8.6, col = "#123A7A"))
 rr_box(0.82, 0.70, 0.18, 0.18, "COOJA.testlog", "runtime traces")
 
-draw_arrow(0.16 + 0.16/2 + 0.02, 0.70, 0.36 - 0.18/2 - 0.02, 0.70)
-draw_arrow(0.36 + 0.18/2 + 0.02, 0.70, 0.58 - 0.22/2 - 0.02, 0.70)
-draw_arrow(0.58 + 0.22/2 + 0.02, 0.70, 0.82 - 0.18/2 - 0.02, 0.70)
+# --------------------
+# Arrows (match experiment direction)
+# Flow: Topology -> Cooja -> Online Trust+Routing -> COOJA.testlog
+#       COOJA.testlog -> Offline Log Analyzer -> Metrics
+# --------------------
+
+y_online <- 0.70
+y_offline <- 0.26
+
+# (1) ONLINE horizontal connectors (left -> right)
+
+# Topology -> Cooja
+draw_connector(
+  x0 = 0.16 + 0.16/2, y0 = y_online,
+  x1 = 0.36 - 0.18/2, y1 = y_online
+)
+
+# Cooja -> Online Trust + Routing
+draw_connector(
+  x0 = 0.36 + 0.18/2, y0 = y_online,
+  x1 = 0.58 - 0.22/2, y1 = y_online
+)
+
+# Online Trust + Routing -> COOJA.testlog
+draw_connector(
+  x0 = 0.58 + 0.22/2, y0 = y_online,
+  x1 = 0.82 - 0.18/2, y1 = y_online
+)
 
 # Offline flow
 rr_box(0.62, 0.26, 0.24, 0.18, "Offline Log Analyzer", "metrics only\n(no online feedback)")
 rr_box(0.84, 0.26, 0.16, 0.18, "Metrics", "PDR / Delay\nOverhead / Churn")
 
-# log -> offline
-draw_arrow(0.82, 0.70 - 0.18/2 - 0.03, 0.62, 0.26 + 0.18/2 + 0.03)
-# offline -> metrics
-draw_arrow(0.62 + 0.24/2 + 0.02, 0.26, 0.84 - 0.16/2 - 0.02, 0.26)
+# (2) Vertical/diagonal connector (log -> offline analysis)
+# COOJA.testlog(bottom) -> Offline Log Analyzer(top)
+draw_connector(
+  x0 = 0.82, y0 = 0.70 - 0.18/2,
+  x1 = 0.62, y1 = 0.26 + 0.18/2
+)
+
+# (3) OFFLINE horizontal connector (left -> right)
+# Offline Log Analyzer -> Metrics
+draw_connector(
+  x0 = 0.62 + 0.24/2, y0 = y_offline,
+  x1 = 0.84 - 0.16/2, y1 = y_offline
+)
 
 # No-feedback barrier (dashed red line)
 bar_y <- 0.41
