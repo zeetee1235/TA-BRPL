@@ -90,6 +90,7 @@ def write_run_meta(log_dir, meta):
 def run_simulation(args, combo, results_dir):
     topo_path = Path(combo["topology"])
     topo_name = topo_path.stem
+    trust_poll_ms = int(os.environ.get("TRUST_POLL_MS", "1000"))
     run_name = build_run_name(
         topo_name,
         combo["scenario"],
@@ -134,6 +135,7 @@ def run_simulation(args, combo, results_dir):
             (r"<randomseed>\d+</randomseed>", f"<randomseed>{combo['seed']}</randomseed>"),
             (r"@SIM_TIME_MS@", str(sim_time_ms)),
             (r"@SIM_TIME_SEC@", str(args.sim_time)),
+            (r"@TRUST_POLL_MS@", str(trust_poll_ms)),
             (r"@TRUST_FEEDBACK_PATH@", str(trust_feedback)),
             (r"BRPL_MODE=\d", "BRPL_MODE=1"),
             (r"TRUST_ENABLED=\d", f"TRUST_ENABLED={combo['trust']}"),

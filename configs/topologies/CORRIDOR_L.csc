@@ -1297,7 +1297,7 @@ while(true) {
     log.log(msg + "\n");
   }
   var now = java.lang.System.currentTimeMillis();
-  if(now - lastCheckMs > 200) {
+  if(now - lastCheckMs > @TRUST_POLL_MS@) {
     pollTrust();
     lastCheckMs = now;
   }

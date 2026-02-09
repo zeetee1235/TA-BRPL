@@ -1886,7 +1886,7 @@ TIMEOUT(240000, log.log("SIMULATION_FINISHED\n"); log.testOK(); );
 log.log("Headless simulation started\n");
 log.log("Duration: 240s\n");
 log.log("Nodes: " + sim.getMotesCount() + "\n");
-var trustFile = "/home/dev/WSN-IoT/trust-aware-brpl/results/experiments-20260209-204314/CLUSTER_L_2_brpl_normal_notrust_p0_mode0_s123456/trust_feedback.txt";
+var trustFile = "/home/dev/WSN-IoT/trust-aware-brpl/results/experiments-20260209-214549/CLUSTER_L_2_brpl_normal_notrust_p0_mode0_s123456/trust_feedback.txt";
 var lastCheckMs = 0;
 var lastPos = 0;
 function pollTrust() {
@@ -1932,7 +1932,7 @@ while(true) {
     log.log(msg + "\n");
   }
   var now = java.lang.System.currentTimeMillis();
-  if(now - lastCheckMs > 200) {
+  if(now - lastCheckMs > 1000) {
     pollTrust();
     lastCheckMs = now;
   }

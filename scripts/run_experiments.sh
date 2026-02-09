@@ -25,6 +25,7 @@ SINKHOLE_RANK_DELTA=${SINKHOLE_RANK_DELTA:-1}
 ATTACK_MODE_SET=(0 1 2)
 SINK_DELTA_SET=(1 2 4)
 TRUST_ALPHA_SET=(1.0 0.5)  # 1.0 = gray-only, 0.5 = sink-enabled (combined trust)
+TRUST_POLL_MS=${TRUST_POLL_MS:-1000}
 SINK_MIN_HOP=${SINK_MIN_HOP:-256}
 SINK_TAU=${SINK_TAU:-0}
 SINK_LAMBDA_ADV=${SINK_LAMBDA_ADV:-0.01}
@@ -225,6 +226,7 @@ run_one() {
             sed -e "s/<randomseed>[0-9]*<\/randomseed>/<randomseed>$seed<\/randomseed>/g" \
                 -e "s/@SIM_TIME_MS@/${SIM_TIME_MS}/g" \
                 -e "s/@SIM_TIME_SEC@/${SIM_TIME}/g" \
+                -e "s/@TRUST_POLL_MS@/${TRUST_POLL_MS}/g" \
                 -e "s|@TRUST_FEEDBACK_PATH@|${TRUST_FEEDBACK_FILE}|g" \
                 -e "s/BRPL_MODE=[0-9]/BRPL_MODE=${BRPL_MODE}/g" \
                 -e "s/TRUST_ENABLED=[0-9]/TRUST_ENABLED=${trust}/g" \
