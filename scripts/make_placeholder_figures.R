@@ -232,11 +232,11 @@ rows <- seq(lane_y1 + 0.12, lane_y1 - 0.12, length.out = 3)
 # Left: data-plane
 rr_box(xL, rows[1], box_w, box_h,
        "Data-plane evidence", "forwarding outcomes\n(success / failure)")
-draw_arrow(xL, rows[1] - box_h/2 - 0.015, xL, rows[2] + box_h/2 + 0.015)
+draw_arrow(xL, rows[2] + box_h/2 + 0.015, xL, rows[1] - box_h/2 - 0.015)
 
 rr_box(xL, rows[2], box_w, box_h,
        "Beta update", "posterior mean\n(estimate)")
-draw_arrow(xL, rows[2] - box_h/2 - 0.015, xL, rows[3] + box_h/2 + 0.015)
+draw_arrow(xL, rows[3] + box_h/2 + 0.015, xL, rows[2] - box_h/2 - 0.015)
 
 rr_box(xL, rows[3], box_w, box_h,
        "EWMA smoothing", "reduce short-term\nnoise")
@@ -244,11 +244,11 @@ rr_box(xL, rows[3], box_w, box_h,
 # Right: control-plane
 rr_box(xR, rows[1], box_w, box_h,
        "Control-plane evidence", "RPL control traffic\n(DIO/DAO etc.)")
-draw_arrow(xR, rows[1] - box_h/2 - 0.015, xR, rows[2] + box_h/2 + 0.015)
+draw_arrow(xR, rows[2] + box_h/2 + 0.015, xR, rows[1] - box_h/2 - 0.015)
 
 rr_box(xR, rows[2], box_w, box_h,
        "Anomaly / deviation score", "rank/metric deviation\n(implementation-defined)")
-draw_arrow(xR, rows[2] - box_h/2 - 0.015, xR, rows[3] + box_h/2 + 0.015)
+draw_arrow(xR, rows[3] + box_h/2 + 0.015, xR, rows[2] - box_h/2 - 0.015)
 
 rr_box(xR, rows[3], box_w, box_h,
        "Stability signal", "parent/rank changes\n(window W)")
