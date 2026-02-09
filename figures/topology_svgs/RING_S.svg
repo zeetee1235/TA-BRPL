@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="163.0" height="174.0" viewBox="0 0 163.0 174.0">
+<rect width="100%" height="100%" fill="white"/>
+<circle cx="8" cy="14" r="4" fill="#e4572e"/>
+<text x="16" y="17" font-size="10" fill="#333">Root</text>
+<circle cx="8" cy="26" r="4" fill="#2f55d4"/>
+<text x="16" y="29" font-size="10" fill="#333">Attacker</text>
+<circle cx="8" cy="38" r="4" fill="#2e8b57"/>
+<text x="16" y="41" font-size="10" fill="#333">Sender</text>
+<circle cx="79.00" cy="87.00" r="3.2" fill="#e4572e"/>
+<text x="83.00" y="83.00" font-size="8" fill="#555">1</text>
+<circle cx="139.00" cy="87.00" r="3.2" fill="#2e8b57"/>
+<text x="143.00" y="83.00" font-size="8" fill="#555">2</text>
+<circle cx="134.00" cy="54.00" r="3.2" fill="#2e8b57"/>
+<text x="138.00" y="50.00" font-size="8" fill="#555">3</text>
+<circle cx="120.00" cy="35.00" r="3.2" fill="#2e8b57"/>
+<text x="124.00" y="31.00" font-size="8" fill="#555">4</text>
+<circle cx="97.00" cy="24.00" r="3.2" fill="#2e8b57"/>
+<text x="101.00" y="20.00" font-size="8" fill="#555">5</text>
+<circle cx="69.00" cy="24.00" r="3.2" fill="#2e8b57"/>
+<text x="73.00" y="20.00" font-size="8" fill="#555">6</text>
+<circle cx="46.00" cy="35.00" r="3.2" fill="#2e8b57"/>
+<text x="50.00" y="31.00" font-size="8" fill="#555">7</text>
+<circle cx="32.00" cy="54.00" r="3.2" fill="#2e8b57"/>
+<text x="36.00" y="50.00" font-size="8" fill="#555">8</text>
+<circle cx="24.00" cy="78.00" r="3.2" fill="#2e8b57"/>
+<text x="28.00" y="74.00" font-size="8" fill="#555">9</text>
+<circle cx="24.00" cy="96.00" r="3.2" fill="#2e8b57"/>
+<text x="28.00" y="92.00" font-size="8" fill="#555">10</text>
+<circle cx="32.00" cy="120.00" r="3.2" fill="#2e8b57"/>
+<text x="36.00" y="116.00" font-size="8" fill="#555">11</text>
+<circle cx="46.00" cy="139.00" r="3.2" fill="#2e8b57"/>
+<text x="50.00" y="135.00" font-size="8" fill="#555">12</text>
+<circle cx="69.00" cy="150.00" r="3.2" fill="#2e8b57"/>
+<text x="73.00" y="146.00" font-size="8" fill="#555">13</text>
+<circle cx="97.00" cy="150.00" r="3.2" fill="#2e8b57"/>
+<text x="101.00" y="146.00" font-size="8" fill="#555">14</text>
+<circle cx="120.00" cy="139.00" r="3.2" fill="#2e8b57"/>
+<text x="124.00" y="135.00" font-size="8" fill="#555">15</text>
+<circle cx="134.00" cy="120.00" r="3.2" fill="#2e8b57"/>
+<text x="138.00" y="116.00" font-size="8" fill="#555">16</text>
+<circle cx="79.00" cy="67.00" r="3.2" fill="#2f55d4"/>
+<text x="83.00" y="63.00" font-size="8" fill="#555">17</text>
+</svg>
