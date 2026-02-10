@@ -9,10 +9,10 @@ RPL/BRPL 기반 LLN에서 **신뢰(Trust) 기반 패널티를 backpressure 메�
 ### Trust 계산 수식
 - Grayhole trust (베타 추정 + EWMA)
 
-\[
-\hat{T} = \frac{\alpha_0 + s_j}{\alpha_0 + \beta_0 + s_j + f_j},\quad
-T_j(t) = \lambda T_j(t-1) + (1-\lambda)\hat{T}
-\]
+```text
+T_hat = (alpha0 + s_j) / (alpha0 + beta0 + s_j + f_j)
+T_j(t) = lambda * T_j(t-1) + (1 - lambda) * T_hat
+```
 
 - Sinkhole trust (rank 불일치 + 안정성)
 
@@ -31,15 +31,15 @@ T_{sink} = (T_{adv})^{w_1} (T_{stab})^{w_2}
 
 - Total trust 결합
 
-\[
-T_{total} = (T_{gray})^{\alpha} (T_{sink})^{1-\alpha}
-\]
+```text
+T_total = (T_gray)^alpha * (T_sink)^(1 - alpha)
+```
 
 - Trust-aware BRPL 메트릭
 
-\[
-BP_{trust} = BP_{ij} \cdot \frac{T_{total}^{\gamma}}{1 + \lambda (1 - T_{total})^{\gamma}}
-\]
+```text
+BP_trust = BP_ij * (T_total^gamma) / (1 + lambda * (1 - T_total)^gamma)
+```
 
 ### 공격 모드
 - `ATTACK_MODE=0`: Selective Forwarding (Grayhole)
