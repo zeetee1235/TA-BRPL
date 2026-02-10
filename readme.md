@@ -1,19 +1,64 @@
-## Trust-Aware BRPL for RPL-based IoT/WSN Networks
+## Trust-Aware BRPL (Contiki-NG/Cooja)
 
-This repository presents an implementation of a **Trust-Aware Backpressure RPL (BRPL)** framework built on top of standard RPL/BRPL in **Contiki-NG** and evaluated using the **Cooja** simulator.
+RPL/BRPL 기반 LLN에서 **신뢰(Trust) 기반 패널티를 backpressure 메트릭에 통합**해 routing 공격(Selective Forwarding/Grayhole, Sinkhole)에 대한 복원력을 평가하는 실험용 저장소입니다.
 
-The proposed approach integrates **node-level trust metrics** into the backpressure-based routing decision process to improve network resilience against **routing-layer attacks**, including **selective forwarding (grayhole/blackhole)** and **sinkhole attacks**, in low-power and lossy IoT/WSN environments.
+### 핵심 아이디어
+- **행동 신뢰(Grayhole trust)**와 **제어면 신뢰(Sinkhole trust)**를 계산
+- 이를 BRPL 메트릭에 패널티로 반영하여 **부모 선택/포워딩**을 제어
 
-Unlike conventional RPL/BRPL, which primarily optimizes routing based on link metrics and queue backpressure, this work explicitly considers **forwarding behavior reliability** when selecting parents and forwarding paths. By penalizing untrustworthy nodes in the routing process, the protocol aims to:
+### Trust 계산 수식
+- Grayhole trust (베타 추정 + EWMA)
 
-* Reduce packet loss caused by malicious or misbehaving forwarders
-* Maintain higher packet delivery ratios under increasing attack intensity
-* Improve robustness without relying on heavyweight cryptographic or intrusion-detection mechanisms
+\[
+\hat{T} = \frac{\alpha_0 + s_j}{\alpha_0 + \beta_0 + s_j + f_j},\quad
+T_j(t) = \lambda T_j(t-1) + (1-\lambda)\hat{T}
+\]
 
-The main objective of this repository is not to propose a standalone security protocol, but to **systematically analyze how trust-aware routing influences BRPL behavior** under adversarial conditions, with a focus on:
+- Sinkhole trust (rank 불일치 + 안정성)
 
-* Packet Delivery Ratio (PDR) degradation patterns
-* Sensitivity to attack rate and topology structure
-* Trade-offs between performance, overhead, and resilience
+\[
+\Delta_{ij} = R_j + \mathrm{MIN\_HOPRANKINC} - R_i,\quad
+s_{ij} = \max(0, -\Delta_{ij} - \tau)
+\]
+\[
+T_{adv} = e^{-\lambda_{adv} s_{ij}},\quad
+u_{ij} = \max(0, \Delta R_i - \kappa),\quad
+T_{stab} = e^{-\lambda_{stab} \nu_{ij}}
+\]
+\[
+T_{sink} = (T_{adv})^{w_1} (T_{stab})^{w_2}
+\]
 
-All experiments are conducted in a **fully reproducible simulation environment**, enabling controlled comparison between baseline RPL/BRPL and the proposed trust-aware variants across multiple network sizes and topologies.
+- Total trust 결합
+
+\[
+T_{total} = (T_{gray})^{\alpha} (T_{sink})^{1-\alpha}
+\]
+
+- Trust-aware BRPL 메트릭
+
+\[
+BP_{trust} = BP_{ij} \cdot \frac{T_{total}^{\gamma}}{1 + \lambda (1 - T_{total})^{\gamma}}
+\]
+
+### 공격 모드
+- `ATTACK_MODE=0`: Selective Forwarding (Grayhole)
+- `ATTACK_MODE=1`: Sinkhole (rank manipulation)
+- `ATTACK_MODE=2`: Combined (sinkhole + selective)
+
+### 실행 방법
+- 전체 스윕: `./scripts/run_experiments.sh`
+- 빠른 미리보기: `QUICK_PREVIEW=1 ./scripts/run_experiments.sh`
+- 단일 검증: `TOPOLOGY=configs/topologies/GRID_L.csc ./scripts/single_test.sh`
+- 특정 토폴로지만: `TOPOLOGIES="configs/topologies/CLUSTER_S.csc configs/topologies/GRID_L.csc" ./scripts/run_experiments.sh`
+
+### 결과 파일
+각 run 디렉토리에는 아래 파일이 생성됩니다.
+- `COOJA.testlog`
+- `exposure.csv` / `parent_switch.csv` / `stats.csv` / `trust_final.log`
+
+### 토폴로지/파라미터 참고
+- 토폴로지: `configs/topologies/*.csc`
+- 상세 실험 메모: `docs/paper_base/memo.md`
+- 토폴로지 규칙/좌표: `docs/paper_base/topology.md`
+
