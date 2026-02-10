@@ -787,3 +787,188 @@ fn main() -> io::Result<()> {
 
     Ok(())
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::io::Cursor;
+    use std::path::{Path, PathBuf};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn make_test_dir() -> io::Result<PathBuf> {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("trust_engine_test_{}", nanos));
+        fs::create_dir_all(&dir)?;
+        Ok(dir)
+    }
+
+    fn open_file(path: &Path) -> io::Result<File> {
+        OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(path)
+    }
+
+    fn read_file(path: &Path) -> io::Result<String> {
+        fs::read_to_string(path)
+    }
+
+    fn base_config() -> Config {
+        Config {
+            input: String::new(),
+            output: String::new(),
+            metrics_out: String::new(),
+            blacklist_out: String::new(),
+            exposure_out: String::new(),
+            parent_out: String::new(),
+            stats_out: String::new(),
+            final_out: String::new(),
+            stats_interval: 200,
+            metric: "ewma".to_string(),
+            alpha: 0.2,
+            beta_a: 1.0,
+            beta_b: 1.0,
+            ewma_min: 0.7,
+            bayes_min: 0.7,
+            beta_min: 0.7,
+            miss_threshold: 5,
+            forwarders_only: false,
+            fwd_drop_threshold: 0.2,
+            follow: false,
+            poll_ms: 200,
+            from_start: false,
+            serial_socket: None,
+            attacker_id: 2,
+            sink_min_hop: 256.0,
+            sink_tau: 0.0,
+            sink_lambda_adv: 0.01,
+            sink_lambda_stab: 0.01,
+            sink_beta: 0.1,
+            sink_kappa: 0.0,
+            sink_w1: 0.5,
+            sink_w2: 0.5,
+            trust_alpha: 0.5,
+        }
+    }
+
+    #[test]
+    fn blacklists_node_on_high_drop_rate() -> io::Result<()> {
+        let dir = make_test_dir()?;
+        let out_path = dir.join("trust.txt");
+        let metrics_path = dir.join("metrics.csv");
+        let blacklist_path = dir.join("blacklist.csv");
+
+        let mut out = open_file(&out_path)?;
+        let mut metrics = open_file(&metrics_path)?;
+        let mut blacklist_out = open_file(&blacklist_path)?;
+
+        let mut cfg = base_config();
+        cfg.fwd_drop_threshold = 0.2;
+
+        let input = "CSV,FWD,2,0,10,8
+SIMULATION_FINISHED
+";
+        let reader = Cursor::new(input.as_bytes());
+
+        let mut blacklist: HashMap<u16, bool> = HashMap::new();
+        let mut exposure_out = None;
+        let mut parent_out = None;
+        let mut stats_out = None;
+        let mut final_out = None;
+
+        process_reader(
+            reader,
+            &cfg,
+            &mut out,
+            &mut metrics,
+            &mut blacklist,
+            &mut blacklist_out,
+            &mut exposure_out,
+            &mut parent_out,
+            &mut stats_out,
+            &mut final_out,
+        )?;
+
+        assert_eq!(blacklist.get(&2), Some(&true));
+
+        let trust_text = read_file(&out_path)?;
+        assert!(trust_text.contains("TRUST,2,0"));
+
+        let bl_text = read_file(&blacklist_path)?;
+        assert!(bl_text.contains("2,2,8"));
+
+        Ok(())
+    }
+
+    #[test]
+    fn exposure_metrics_deduplicate_packets() -> io::Result<()> {
+        let dir = make_test_dir()?;
+        let out_path = dir.join("trust.txt");
+        let metrics_path = dir.join("metrics.csv");
+        let blacklist_path = dir.join("blacklist.csv");
+        let exposure_path = dir.join("exposure.csv");
+
+        let mut out = open_file(&out_path)?;
+        let mut metrics = open_file(&metrics_path)?;
+        let mut blacklist_out = open_file(&blacklist_path)?;
+        let mut exposure_file = open_file(&exposure_path)?;
+        writeln!(exposure_file, "line,tx_total,attacker_udp_total,attacker_udp_dropped,parent_samples,parent_attacker_samples,e1,e1_num,e1_den,e3,e3_num,e3_den,attacker_id")?;
+
+        let cfg = base_config();
+
+        let input = concat!(
+            "CSV,TX,3,1
+",
+            "CSV,TX,3,1
+",
+            "CSV,FWD_PKT,2,3,1
+",
+            "CSV,RX,node=1,3,1,foo,bar
+",
+            "CSV,RX,node=1,3,1,foo,bar
+",
+            "CSV,FWD,2,0,1,0
+",
+            "SIMULATION_FINISHED
+"
+        );
+        let reader = Cursor::new(input.as_bytes());
+
+        let mut blacklist: HashMap<u16, bool> = HashMap::new();
+        let mut exposure_out = Some(exposure_file);
+        let mut parent_out = None;
+        let mut stats_out = None;
+        let mut final_out = None;
+
+        process_reader(
+            reader,
+            &cfg,
+            &mut out,
+            &mut metrics,
+            &mut blacklist,
+            &mut blacklist_out,
+            &mut exposure_out,
+            &mut parent_out,
+            &mut stats_out,
+            &mut final_out,
+        )?;
+
+        let exposure_text = read_file(&exposure_path)?;
+        let mut lines = exposure_text.lines();
+        let _header = lines.next();
+        let data = lines.next().unwrap_or_default();
+        let cols: Vec<&str> = data.split(',').collect();
+
+        assert_eq!(cols.get(1), Some(&"1")); // tx_total
+        assert_eq!(cols.get(7), Some(&"1")); // e1_num
+        assert_eq!(cols.get(8), Some(&"1")); // e1_den
+
+        Ok(())
+    }
+}
