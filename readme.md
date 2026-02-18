@@ -1,5 +1,6 @@
-## Trust-Aware BRPL (Contiki-NG/Cooja)
+## TA-BRPL (Trust Aware Backpressure RPL)
 
+(Contiki-NG/Cooja)
 RPL/BRPL 기반 LLN에서 **신뢰(Trust) 기반 패널티를 backpressure 메트릭에 통합**해 routing 공격(Selective Forwarding/Grayhole, Sinkhole)에 대한 복원력을 평가하는 실험용 저장소입니다.
 
 ### 핵심 아이디어
